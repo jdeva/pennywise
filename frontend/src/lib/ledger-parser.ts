@@ -50,86 +50,112 @@ export function parseBalance(raw: string): BalanceRow[] {
   const rows: BalanceRow[] = []
   const lines = raw.split('\n')
 
+  // Depth is derived from indent of the account-name column, which ledger pads
+  // with 2 extra spaces per tree level. We find the shallowest indent among
+  // non-leaf lines and treat that as depth 0, then compute depth in units of 2 spaces.
+  let baseIndent: number | null = null
+
+  // First pass: collect parsed rows with raw account indent.
+  const parsed: Array<{ amount: number; currency: string; name: string; indent: number }> = []
   for (const line of lines) {
     if (!line.trim()) continue
     if (line.includes('---')) break
 
-    // Account name starts where the 2+ space gap after the amount ends.
-    // A typical line: "       $ -1,234.56  Assets:Checking"
-    const match = line.match(/^(\s*[^\s].*?)\s{2,}([^\s].*)$/)
+    // Typical line: "            $1574.76  Assets"     (depth 0)
+    //               "            $1612.76    Bank:Revolut"  (depth 1, extra indent)
+    // Capture: amountCell (anything up to a 2+ space gap) + the account (with indent preserved).
+    const match = line.match(/^(\s*[^\s].*?)(\s{2,})([^\s].*)$/)
     if (!match) continue
     const money = parseMoney(match[1])
     if (!money) continue
-    const accountRaw = match[2]
-    const depth = accountRaw.match(/^\s*/)?.[0].length ?? 0
-    rows.push({
-      account: accountRaw.trim(),
-      amount: money.amount,
-      currency: money.currency,
-      depth,
-    })
+    const accountCell = match[3]
+    // The gap between amount cell end and account start — but the amount cell
+    // itself is right-aligned and may be padded with leading spaces. What we
+    // actually need is the indent within the account column region.
+    // The gap before the account (match[2]) is the delimiter; any additional
+    // spaces beyond the minimum-2 indicate tree nesting.
+    const gapWidth = match[2].length
+    const indent = gapWidth
+    const name = accountCell.trim()
+    if (baseIndent === null || indent < baseIndent) baseIndent = indent
+    parsed.push({ amount: money.amount, currency: money.currency, name, indent })
+  }
+
+  const base = baseIndent ?? 0
+  for (const p of parsed) {
+    const depth = Math.max(0, Math.round((p.indent - base) / 2))
+    rows.push({ account: p.name, amount: p.amount, currency: p.currency, depth })
   }
 
   return rows
 }
 
 /**
- * Parses `ledger register` output into transaction entries with their postings.
+ * Parses `ledger register` output into transaction entries.
  *
- * Each entry starts with a line that has a date + payee; subsequent lines
- * lacking a date belong to that entry's postings.
+ * Output shape — columns are fixed-width whitespace-padded:
+ *   col 0-8:   date (YY-MMM-DD)
+ *   col 10-31: payee (padded with spaces to col 32)
+ *   col 32-:   account, then amount, then running total
  *
- *   26-Feb-01 Rent        Assets:Checking        $ -1000.00   $ -1000.00
- *                         Expenses:Rent           $ 1000.00            0
+ *   26-Apr-30 Mate1 posted this     Expenses:Food:Coffee          $8.00        $8.00
+ *                                   Assets:Bank:Revolut          $-8.00            0
+ *
+ * Posting lines (continuation) have the date+payee columns blank.
+ *
+ * We parse right-to-left for amounts (last money is running total; second-last
+ * is the posting amount) and split date/payee/account using fixed-column logic
+ * rather than counting 2+ space gaps (which breaks on multi-word payees).
  */
+const ACCOUNT_COL = 32 // empirical — ledger pads payee to col 32 before account
+const DATE_LEN = 9 // "YY-MMM-DD"
+
 export function parseRegister(raw: string): RegisterEntry[] {
   const entries: RegisterEntry[] = []
-  const dateHead = /^(\d{2,4}[-\/][A-Za-z0-9]{2,3}[-\/]\d{1,2})\s+(.+)$/
   let current: RegisterEntry | null = null
 
-  for (const line of raw.split('\n')) {
-    if (!line.trim()) continue
-    const headMatch = line.match(dateHead)
-    const rest = headMatch ? headMatch[2] : line
+  for (const rawLine of raw.split('\n')) {
+    if (!rawLine.trim()) continue
 
-    // Split the remainder by 2+ spaces; we expect [account, amount, running?]
-    const cells = rest.split(/\s{2,}/).map((s) => s.trim()).filter(Boolean)
+    // Identify the account column. On header lines, col ≥ ACCOUNT_COL; on
+    // continuation lines (no date/payee), the account just starts after leading
+    // spaces and we can locate it by scanning for the first non-space.
+    const isHeader = /^\d{2,4}-[A-Za-z0-9]{2,3}-\d{1,2}/.test(rawLine)
+
+    // Extract the account + amounts region (everything from ACCOUNT_COL onward).
+    const tail = rawLine.length >= ACCOUNT_COL ? rawLine.slice(ACCOUNT_COL) : rawLine.trimStart()
+
+    // Split the tail on 2+ spaces: [account, amount, runningTotal?]
+    const cells = tail.split(/\s{2,}/).map((s) => s.trim()).filter(Boolean)
     if (cells.length < 2) continue
 
-    const money = parseMoney(cells[cells.length - 2])
-    if (!money) {
-      // Trailing money might be missing — try last cell
-      const fallback = parseMoney(cells[cells.length - 1])
-      if (!fallback) continue
-    }
-    // Find the first cell that looks like money from the right
+    // Find the two money cells from the right. Rightmost = running total, next = amount.
     let amountIdx = -1
     for (let i = cells.length - 1; i >= 0; i--) {
       if (parseMoney(cells[i])) {
-        amountIdx = i
-        break
+        if (amountIdx === -1) {
+          amountIdx = i
+        } else {
+          amountIdx = i
+          break
+        }
       }
     }
     if (amountIdx === -1) continue
-    // The amount is the *first* money from left, not the rightmost (that's running total).
-    // We look left until we find a non-money cell — everything before is the account.
-    let firstMoneyIdx = amountIdx
-    for (let i = 0; i < amountIdx; i++) {
-      if (parseMoney(cells[i])) {
-        firstMoneyIdx = i
-        break
-      }
-    }
-    const account = cells.slice(0, firstMoneyIdx).join(' ')
-    const amountMoney = parseMoney(cells[firstMoneyIdx])
-    if (!account || !amountMoney) continue
+    const amountMoney = parseMoney(cells[amountIdx])
+    if (!amountMoney) continue
+    const account = cells.slice(0, amountIdx).join(' ').trim()
+    if (!account) continue
 
-    if (headMatch) {
-      // Start of a new entry
+    if (isHeader) {
       if (current) entries.push(current)
+      const date = rawLine.slice(0, DATE_LEN)
+      // Payee is from col (DATE_LEN + 1) up to ACCOUNT_COL, trimmed.
+      const payeeRaw = rawLine.slice(DATE_LEN + 1, ACCOUNT_COL)
+      const payee = payeeRaw.trim()
       current = {
-        date: headMatch[1],
-        payee: extractPayee(headMatch[2], account),
+        date,
+        payee,
         postings: [{ account, amount: amountMoney.amount, currency: amountMoney.currency }],
       }
     } else if (current) {
@@ -138,17 +164,6 @@ export function parseRegister(raw: string): RegisterEntry[] {
   }
   if (current) entries.push(current)
   return entries
-}
-
-/**
- * The first posting line includes the payee AND the account. Payee ends
- * where the account name starts; split on 2+ spaces and drop the trailing
- * account cell.
- */
-function extractPayee(headRest: string, account: string): string {
-  const idx = headRest.lastIndexOf(account)
-  if (idx === -1) return headRest.split(/\s{2,}/)[0].trim()
-  return headRest.slice(0, idx).trim()
 }
 
 /** Normalise any NaiveDate-ish string into ISO YYYY-MM-DD when possible. */

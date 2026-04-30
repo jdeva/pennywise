@@ -27,6 +27,7 @@ export interface WorkspacePublic {
 
 export interface SharedUser {
   user_id: string
+  username: string
   permission: 'read' | 'write'
 }
 

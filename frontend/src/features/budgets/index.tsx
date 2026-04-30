@@ -53,7 +53,7 @@ export function BudgetsPage() {
       const { data } = await budgetsApi.list(activeWorkspace!.id)
       return data
     },
-    enabled: !!activeWorkspace && budgetingStatus?.budgeting_enabled,
+    enabled: !!activeWorkspace && budgetingStatus?.budgeting_enabled === true,
   })
 
   const toggleMutation = useMutation({

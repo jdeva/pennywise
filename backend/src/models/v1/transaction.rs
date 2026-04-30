@@ -29,6 +29,15 @@ pub struct PostTransactionRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct UpdateTransactionRequest {
+    pub date: String,
+    pub payee: String,
+    pub debit_account: String,
+    pub credit_account: String,
+    pub amount: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct AddCategoryRequest {
     pub name: String,
     pub category_type: CategoryType,
@@ -73,6 +82,26 @@ pub struct BalanceQuery {
 #[derive(Debug, Clone, Serialize)]
 pub struct TransactionResponse {
     pub formatted_text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TransactionPosting {
+    pub account: String,
+    pub amount: String,
+}
+
+/// Structured transaction entry parsed from ledger files. Only transactions
+/// that carry an `Id:` tag (posted via this API) are returned — legacy
+/// hand-written entries without IDs are skipped so the ID is always stable.
+#[derive(Debug, Clone, Serialize)]
+pub struct TransactionEntry {
+    pub id: Uuid,
+    pub date: String,
+    pub payee: String,
+    pub postings: Vec<TransactionPosting>,
+    pub posted_by: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

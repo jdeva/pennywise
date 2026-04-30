@@ -2,13 +2,14 @@ use actix_web::{web, HttpRequest, HttpResponse, Result};
 
 use crate::models::{
     BalanceQuery, CreateWorkspaceRequest, OpeningBalanceRequest, PostTransactionRequest,
-    RegisterQuery, ShareWorkspaceRequest, UpdateWorkspaceRequest, WorkspacePublic,
+    RegisterQuery, ShareWorkspaceRequest, UpdateTransactionRequest, UpdateWorkspaceRequest,
+    WorkspacePublic,
 };
 use crate::services::{TransactionService, WorkspaceService};
 use crate::utils::auth::get_user_id_from_request;
 use crate::utils::validation::{
     validate_create_workspace, validate_opening_balance, validate_post_transaction,
-    validate_share_workspace, validate_update_workspace,
+    validate_share_workspace, validate_update_transaction, validate_update_workspace,
 };
 use crate::utils::AppError;
 
@@ -23,6 +24,9 @@ pub fn workspaces_config(cfg: &mut web::ServiceConfig) {
             .route("/{id}/share", web::post().to(share_workspace))
             .route("/{id}/share/{user_id}", web::delete().to(unshare_workspace))
             .route("/{id}/transactions", web::post().to(post_transaction))
+            .route("/{id}/transactions", web::get().to(list_transactions))
+            .route("/{id}/transactions/{tx_id}", web::put().to(update_transaction))
+            .route("/{id}/transactions/{tx_id}", web::delete().to(delete_transaction))
             .route("/{id}/balance", web::get().to(query_balance))
             .route("/{id}/register", web::get().to(query_register))
             .route("/{id}/initialize", web::post().to(post_opening_balance))
@@ -173,6 +177,62 @@ async fn post_transaction(
 
     let response = tx_service.post_transaction(&workspace_id, &user_id, &data)?;
     Ok(HttpResponse::Created().json(response))
+}
+
+async fn list_transactions(
+    req: HttpRequest,
+    path: web::Path<String>,
+    tx_service: web::Data<TransactionService>,
+) -> Result<HttpResponse, AppError> {
+    let user_id = get_user_id_from_request(&req)
+        .map_err(|_| AppError::Unauthorized("Not authenticated".to_string()))?;
+
+    let workspace_id = uuid::Uuid::parse_str(&path.into_inner())
+        .map_err(|_| AppError::BadRequest("Invalid workspace ID".to_string()))?;
+
+    let entries = tx_service.list_transactions(&workspace_id, &user_id)?;
+    Ok(HttpResponse::Ok().json(entries))
+}
+
+async fn update_transaction(
+    req: HttpRequest,
+    path: web::Path<(String, String)>,
+    data: web::Json<UpdateTransactionRequest>,
+    tx_service: web::Data<TransactionService>,
+) -> Result<HttpResponse, AppError> {
+    let user_id = get_user_id_from_request(&req)
+        .map_err(|_| AppError::Unauthorized("Not authenticated".to_string()))?;
+
+    let (workspace_id_str, tx_id_str) = path.into_inner();
+    let workspace_id = uuid::Uuid::parse_str(&workspace_id_str)
+        .map_err(|_| AppError::BadRequest("Invalid workspace ID".to_string()))?;
+    let tx_id = uuid::Uuid::parse_str(&tx_id_str)
+        .map_err(|_| AppError::BadRequest("Invalid transaction ID".to_string()))?;
+
+    if let Err(details) = validate_update_transaction(&data) {
+        return Err(AppError::Validation(details));
+    }
+
+    let response = tx_service.update_transaction(&workspace_id, &user_id, &tx_id, &data)?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+async fn delete_transaction(
+    req: HttpRequest,
+    path: web::Path<(String, String)>,
+    tx_service: web::Data<TransactionService>,
+) -> Result<HttpResponse, AppError> {
+    let user_id = get_user_id_from_request(&req)
+        .map_err(|_| AppError::Unauthorized("Not authenticated".to_string()))?;
+
+    let (workspace_id_str, tx_id_str) = path.into_inner();
+    let workspace_id = uuid::Uuid::parse_str(&workspace_id_str)
+        .map_err(|_| AppError::BadRequest("Invalid workspace ID".to_string()))?;
+    let tx_id = uuid::Uuid::parse_str(&tx_id_str)
+        .map_err(|_| AppError::BadRequest("Invalid transaction ID".to_string()))?;
+
+    tx_service.delete_transaction(&workspace_id, &user_id, &tx_id)?;
+    Ok(HttpResponse::NoContent().finish())
 }
 
 async fn query_balance(

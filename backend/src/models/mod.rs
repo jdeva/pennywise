@@ -9,6 +9,7 @@ pub use v1::{
     ListCategoriesQuery, LoginRequest, OpeningBalanceRequest, Permission, PostTransactionRequest,
     RefreshRequest, RegisterQuery, RegisterRequest, RegisterResponse, RotationPeriod,
     SetActiveRequest, SetBudgetingRequest, SetRoleRequest, ShareWorkspaceRequest, SharedUser,
-    TransactionResponse, UpdateWorkspaceRequest, UpdateProfileRequest, UserAuth, UserCategories,
+    TransactionEntry, TransactionPosting, TransactionResponse, UpdateTransactionRequest,
+    UpdateWorkspaceRequest, UpdateProfileRequest, UserAuth, UserCategories,
     UserProfile, UserPublic, ValidationDetail,
 };

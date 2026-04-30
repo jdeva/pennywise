@@ -3,6 +3,7 @@ pub mod workspace;
 pub mod cache;
 pub mod file_store;
 pub mod ledger_cli;
+pub mod ledger_parser;
 pub mod transaction;
 pub mod user;
 

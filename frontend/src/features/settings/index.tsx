@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AccountTree } from './account-tree'
 import { WorkspacesTab } from './workspaces'
 import { UsersTab } from './users-tab'
+import { SeedPicker } from './seed-picker'
 
 const profileSchema = z.object({
   username: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/),
@@ -112,6 +113,8 @@ export function SettingsPage() {
                 </CardContent>
               </form>
             </Card>
+
+            <SeedPicker />
 
             <Card>
               <CardHeader><CardTitle>Change Password</CardTitle></CardHeader>

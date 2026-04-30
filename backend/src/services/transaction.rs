@@ -6,9 +6,11 @@ use uuid::Uuid;
 
 use crate::models::{
     AccountType, BalanceResponse, CategoryType, ChartOfAccounts, OpeningBalanceRequest,
-    PostTransactionRequest, RegisterResponse, TransactionResponse, UserCategories,
+    PostTransactionRequest, RegisterResponse, TransactionEntry, TransactionPosting,
+    TransactionResponse, UpdateTransactionRequest, UserCategories,
 };
 use crate::services::ledger_cli::LedgerCli;
+use crate::services::ledger_parser;
 use crate::services::workspace::WorkspaceService;
 use crate::services::cache::Cache;
 use crate::services::file_store::FileStore;
@@ -337,10 +339,34 @@ impl TransactionService {
         amount: f64,
         username: &str,
     ) -> String {
+        self.format_transaction_with_id(
+            Uuid::new_v4(),
+            date,
+            payee,
+            debit_account,
+            credit_account,
+            amount,
+            username,
+        )
+    }
+
+    /// Same as `format_transaction` but emits a caller-specified ID. Used when
+    /// rewriting an existing transaction to preserve its identity across edits.
+    pub fn format_transaction_with_id(
+        &self,
+        id: Uuid,
+        date: &NaiveDate,
+        payee: &str,
+        debit_account: &str,
+        credit_account: &str,
+        amount: f64,
+        username: &str,
+    ) -> String {
         format!(
-            "{date} {payee}\n    {debit}  ${amount:.2}\n    ; User: {user}\n    {credit}  -${amount:.2}\n    ; User: {user}",
+            "{date} {payee}\n    ; Id: {id}\n    {debit}  ${amount:.2}\n    ; User: {user}\n    {credit}  -${amount:.2}\n    ; User: {user}",
             date = date.format("%Y-%m-%d"),
             payee = payee,
+            id = id,
             debit = debit_account,
             credit = credit_account,
             amount = amount,
@@ -388,7 +414,9 @@ impl TransactionService {
             .parse()
             .map_err(|e| AppError::BadRequest(format!("Invalid amount: {}", e)))?;
 
-        let formatted = self.format_transaction(
+        let tx_id = Uuid::new_v4();
+        let formatted = self.format_transaction_with_id(
+            tx_id,
             &date,
             &req.payee,
             &req.debit_account,
@@ -408,6 +436,222 @@ impl TransactionService {
 
         Ok(TransactionResponse {
             formatted_text: formatted,
+            id: Some(tx_id),
+        })
+    }
+
+    /// List all transactions with IDs across the workspace's period files.
+    /// Legacy (pre-ID) entries are skipped — callers wanting every historical
+    /// posting should keep using `query_register`, which goes through the
+    /// ledger CLI.
+    pub fn list_transactions(
+        &self,
+        workspace_id: &Uuid,
+        user_id: &Uuid,
+    ) -> Result<Vec<TransactionEntry>, AppError> {
+        let workspace = self
+            .workspace_service
+            .get_workspace_authorized(workspace_id, user_id)?;
+
+        let paths = self.file_store.list_period_files(&workspace)?;
+        let mut out = Vec::new();
+        for path in paths {
+            let contents = match self.file_store.read_ledger_file(&path)? {
+                Some(c) => c,
+                None => continue,
+            };
+            for entry in ledger_parser::parse_entries(&contents) {
+                if let Some(id) = entry.id {
+                    out.push(TransactionEntry {
+                        id,
+                        date: entry.date,
+                        payee: entry.payee,
+                        postings: entry
+                            .postings
+                            .into_iter()
+                            .map(|p| TransactionPosting {
+                                account: p.account,
+                                amount: p.amount,
+                            })
+                            .collect(),
+                        posted_by: entry.posted_by,
+                    });
+                }
+            }
+        }
+        // Sort newest first — date descending, then payee for stability.
+        out.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.payee.cmp(&b.payee)));
+        Ok(out)
+    }
+
+    /// Delete a transaction by ID. Requires write access. Returns 404 if the
+    /// ID doesn't exist in any period file.
+    pub fn delete_transaction(
+        &self,
+        workspace_id: &Uuid,
+        user_id: &Uuid,
+        tx_id: &Uuid,
+    ) -> Result<(), AppError> {
+        let workspace = self
+            .workspace_service
+            .get_workspace(workspace_id)?
+            .ok_or_else(|| AppError::NotFound("Workspace not found".to_string()))?;
+
+        if !workspace.is_active {
+            return Err(AppError::BadRequest(
+                "Workspace is deactivated".to_string(),
+            ));
+        }
+
+        if !workspace.has_access(user_id) {
+            return Err(AppError::NotFound("Workspace not found".to_string()));
+        }
+
+        if !workspace.has_write_access(user_id) {
+            return Err(AppError::Forbidden(
+                "You don't have write access to this workspace".to_string(),
+            ));
+        }
+
+        let paths = self.file_store.list_period_files(&workspace)?;
+        for path in paths {
+            let contents = match self.file_store.read_ledger_file(&path)? {
+                Some(c) => c,
+                None => continue,
+            };
+            if let Some(new_contents) = ledger_parser::remove_entry(&contents, tx_id) {
+                self.file_store.write_ledger_file(&path, &new_contents)?;
+                return Ok(());
+            }
+        }
+
+        Err(AppError::NotFound("Transaction not found".to_string()))
+    }
+
+    /// Update a transaction by ID. Preserves the ID and the original poster's
+    /// username (audit trail). If the new date falls into a different period
+    /// than the original, the entry is moved to the correct period file.
+    pub fn update_transaction(
+        &self,
+        workspace_id: &Uuid,
+        user_id: &Uuid,
+        tx_id: &Uuid,
+        req: &UpdateTransactionRequest,
+    ) -> Result<TransactionResponse, AppError> {
+        let workspace = self
+            .workspace_service
+            .get_workspace(workspace_id)?
+            .ok_or_else(|| AppError::NotFound("Workspace not found".to_string()))?;
+
+        if !workspace.is_active {
+            return Err(AppError::BadRequest(
+                "Workspace is deactivated".to_string(),
+            ));
+        }
+
+        if !workspace.has_access(user_id) {
+            return Err(AppError::NotFound("Workspace not found".to_string()));
+        }
+
+        if !workspace.has_write_access(user_id) {
+            return Err(AppError::Forbidden(
+                "You don't have write access to this workspace".to_string(),
+            ));
+        }
+
+        let new_date = NaiveDate::parse_from_str(&req.date, "%Y-%m-%d")
+            .map_err(|e| AppError::BadRequest(format!("Invalid date: {}", e)))?;
+        let new_amount: f64 = req
+            .amount
+            .parse()
+            .map_err(|e| AppError::BadRequest(format!("Invalid amount: {}", e)))?;
+
+        // 1. Find the original entry and its file so we can preserve the
+        //    original poster's name.
+        let paths = self.file_store.list_period_files(&workspace)?;
+        let mut original: Option<(std::path::PathBuf, String, Option<String>)> = None;
+        for path in &paths {
+            let contents = match self.file_store.read_ledger_file(path)? {
+                Some(c) => c,
+                None => continue,
+            };
+            for entry in ledger_parser::parse_entries(&contents) {
+                if entry.id == Some(*tx_id) {
+                    original = Some((path.clone(), contents.clone(), entry.posted_by));
+                    break;
+                }
+            }
+            if original.is_some() {
+                break;
+            }
+        }
+        let (original_path, original_contents, original_user) = original
+            .ok_or_else(|| AppError::NotFound("Transaction not found".to_string()))?;
+
+        // Fall back to the editor's username if the original tx had no User tag.
+        let username = match original_user {
+            Some(u) => u,
+            None => {
+                let profile = self
+                    .user_service
+                    .get_profile(user_id)?
+                    .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+                profile.username
+            }
+        };
+
+        let formatted = self.format_transaction_with_id(
+            *tx_id,
+            &new_date,
+            &req.payee,
+            &req.debit_account,
+            &req.credit_account,
+            new_amount,
+            &username,
+        );
+
+        // 2. Decide whether the new date lives in the same period file.
+        let target_period_path = if workspace.ledger_dir.is_some() {
+            let period_label = workspace.rotation_period.period_label(&new_date);
+            self.file_store.period_file_path(&workspace, &period_label)
+        } else {
+            // Legacy single-file workspaces always rewrite in place.
+            original_path.clone()
+        };
+
+        if target_period_path == original_path {
+            // Rewrite the original file in place.
+            let new_contents = ledger_parser::replace_entry(
+                &original_contents,
+                tx_id,
+                &formatted,
+            )
+            .ok_or_else(|| {
+                AppError::Internal("Failed to locate transaction block during rewrite".to_string())
+            })?;
+            self.file_store
+                .write_ledger_file(&original_path, &new_contents)?;
+        } else {
+            // Date crossed a period boundary — remove from the old file,
+            // append to the new (creating it if needed).
+            let old_contents_stripped = ledger_parser::remove_entry(&original_contents, tx_id)
+                .ok_or_else(|| {
+                    AppError::Internal(
+                        "Failed to locate transaction block during cross-period move".to_string(),
+                    )
+                })?;
+            self.file_store
+                .write_ledger_file(&original_path, &old_contents_stripped)?;
+            let period_label = workspace.rotation_period.period_label(&new_date);
+            self.file_store
+                .append_to_period_file(&workspace, &period_label, &formatted)?;
+        }
+
+        self.auto_add_from_transaction(user_id, &req.debit_account, &req.credit_account)?;
+
+        Ok(TransactionResponse {
+            formatted_text: formatted,
+            id: Some(*tx_id),
         })
     }
 
@@ -559,7 +803,9 @@ impl TransactionService {
             .parse()
             .map_err(|e| AppError::BadRequest(format!("Invalid amount: {}", e)))?;
 
-        let formatted = self.format_transaction(
+        let ob_id = Uuid::new_v4();
+        let formatted = self.format_transaction_with_id(
+            ob_id,
             &date,
             "Opening Balance",
             asset_account,
@@ -579,6 +825,7 @@ impl TransactionService {
 
         Ok(TransactionResponse {
             formatted_text: formatted,
+            id: Some(ob_id),
         })
     }
 }
@@ -985,34 +1232,38 @@ mod tests {
             let formatted = service.format_transaction(&date, &payee, &debit, &credit, amount, &username);
             let lines: Vec<&str> = formatted.lines().collect();
 
-            // Must have exactly 5 lines
-            prop_assert_eq!(lines.len(), 5, "Expected 5 lines, got {}: {:?}", lines.len(), lines);
+            // Must have exactly 6 lines: header, ; Id, debit, ; User, credit, ; User
+            prop_assert_eq!(lines.len(), 6, "Expected 6 lines, got {}: {:?}", lines.len(), lines);
 
             // Line 1: date and payee
             let expected_date = date.format("%Y-%m-%d").to_string();
             prop_assert!(lines[0].starts_with(&expected_date), "First line should start with date");
             prop_assert!(lines[0].contains(&payee), "First line should contain payee");
 
-            // Line 2: debit account with positive amount
-            let amount_str = format!("${:.2}", amount);
-            prop_assert!(lines[1].contains(&debit), "Second line should contain debit account");
-            prop_assert!(lines[1].contains(&amount_str), "Second line should contain amount");
+            // Line 2: Id metadata tag — uuid v4 format
+            prop_assert!(lines[1].trim_start().starts_with("; Id:"), "Second line should carry Id tag, got {:?}", lines[1]);
             prop_assert!(lines[1].starts_with("    "), "Second line should be indented");
 
-            // Line 3: User metadata tag
-            let user_tag = format!("; User: {}", username);
-            prop_assert!(lines[2].contains(&user_tag), "Third line should contain user tag");
+            // Line 3: debit account with positive amount
+            let amount_str = format!("${:.2}", amount);
+            prop_assert!(lines[2].contains(&debit), "Third line should contain debit account");
+            prop_assert!(lines[2].contains(&amount_str), "Third line should contain amount");
             prop_assert!(lines[2].starts_with("    "), "Third line should be indented");
 
-            // Line 4: credit account with negative amount
-            let neg_amount_str = format!("-${:.2}", amount);
-            prop_assert!(lines[3].contains(&credit), "Fourth line should contain credit account");
-            prop_assert!(lines[3].contains(&neg_amount_str), "Fourth line should contain negative amount");
+            // Line 4: User metadata tag
+            let user_tag = format!("; User: {}", username);
+            prop_assert!(lines[3].contains(&user_tag), "Fourth line should contain user tag");
             prop_assert!(lines[3].starts_with("    "), "Fourth line should be indented");
 
-            // Line 5: User metadata tag
-            prop_assert!(lines[4].contains(&user_tag), "Fifth line should contain user tag");
+            // Line 5: credit account with negative amount
+            let neg_amount_str = format!("-${:.2}", amount);
+            prop_assert!(lines[4].contains(&credit), "Fifth line should contain credit account");
+            prop_assert!(lines[4].contains(&neg_amount_str), "Fifth line should contain negative amount");
             prop_assert!(lines[4].starts_with("    "), "Fifth line should be indented");
+
+            // Line 6: User metadata tag
+            prop_assert!(lines[5].contains(&user_tag), "Sixth line should contain user tag");
+            prop_assert!(lines[5].starts_with("    "), "Sixth line should be indented");
         }
     }
 
@@ -1529,6 +1780,272 @@ mod tests {
 
         let expenses = service.list_accounts(&user_id, &AccountType::Expenses).unwrap();
         assert_eq!(expenses.iter().filter(|e| *e == "Expenses:Food").count(), 1);
+    }
+
+    // --- Transaction ID / delete / update tests ---
+
+    fn mk_ws_with_user(service: &TransactionService, username: &str) -> (UserProfile, Workspace) {
+        let user = create_test_user(&service.file_store, username);
+        // Use the migrated workspace layout so period files live in
+        // workspaces/workspace-{id}/. Build one by hand so the rotation_period
+        // and ledger_dir fields match what `TransactionService` expects.
+        let now = Utc::now();
+        let ws = Workspace {
+            id: Uuid::new_v4(),
+            name: "IdTest".to_string(),
+            owner_id: user.id,
+            currency: "USD".to_string(),
+            shared_with: vec![],
+            is_active: true,
+            created_at: now,
+            updated_at: now,
+            ledger_dir: Some(format!("workspaces/workspace-{}/", Uuid::new_v4())),
+            rotation_period: RotationPeriod::Quarterly,
+            budgeting_enabled: false,
+        };
+        // Re-patch ledger_dir to use the same id we just generated for ws.
+        let mut ws = ws;
+        ws.ledger_dir = Some(format!("workspaces/workspace-{}/", ws.id));
+        // Ensure the workspace dir and root ledger exist so
+        // `append_to_period_file` has something to `add_include_to_workspace_ledger` into.
+        service.file_store.write_workspace(&ws).unwrap();
+        service.file_store.create_workspace_dir(&ws).unwrap();
+        service.file_store.create_workspace_ledger(&ws).unwrap();
+        (user, ws)
+    }
+
+    #[test]
+    fn post_transaction_emits_id_and_id_tag_in_file() {
+        let tmp = TempDir::new().unwrap();
+        let service = make_test_service(&tmp);
+        let (user, ws) = mk_ws_with_user(&service, "idtester");
+
+        let req = PostTransactionRequest {
+            date: "2026-05-01".to_string(),
+            payee: "Lunch".to_string(),
+            debit_account: "Expenses:Food".to_string(),
+            credit_account: "Assets:Bank:Revolut".to_string(),
+            amount: "12.50".to_string(),
+        };
+        let resp = service.post_transaction(&ws.id, &user.id, &req).unwrap();
+        let tx_id = resp.id.expect("post_transaction should return an id");
+
+        // The period file should contain the Id tag.
+        let paths = service.file_store.list_period_files(&ws).unwrap();
+        let mut found_id = false;
+        for p in paths {
+            let contents = std::fs::read_to_string(&p).unwrap();
+            if contents.contains(&format!("; Id: {}", tx_id)) {
+                found_id = true;
+                break;
+            }
+        }
+        assert!(found_id, "Posted transaction should include its Id tag in the period file");
+    }
+
+    #[test]
+    fn list_transactions_returns_only_id_bearing_entries_sorted_newest_first() {
+        let tmp = TempDir::new().unwrap();
+        let service = make_test_service(&tmp);
+        let (user, ws) = mk_ws_with_user(&service, "idlister");
+
+        let mk_req = |date: &str, payee: &str| PostTransactionRequest {
+            date: date.to_string(),
+            payee: payee.to_string(),
+            debit_account: "Expenses:Food".to_string(),
+            credit_account: "Assets:Bank:Revolut".to_string(),
+            amount: "1.00".to_string(),
+        };
+        service.post_transaction(&ws.id, &user.id, &mk_req("2026-04-01", "Old")).unwrap();
+        service.post_transaction(&ws.id, &user.id, &mk_req("2026-05-15", "New")).unwrap();
+
+        let entries = service.list_transactions(&ws.id, &user.id).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].date, "2026-05-15");
+        assert_eq!(entries[0].payee, "New");
+        assert_eq!(entries[1].date, "2026-04-01");
+        assert_eq!(entries[0].posted_by.as_deref(), Some("idlister"));
+    }
+
+    #[test]
+    fn delete_transaction_removes_block_and_leaves_others() {
+        let tmp = TempDir::new().unwrap();
+        let service = make_test_service(&tmp);
+        let (user, ws) = mk_ws_with_user(&service, "iddeleter");
+
+        let keep = service.post_transaction(
+            &ws.id,
+            &user.id,
+            &PostTransactionRequest {
+                date: "2026-05-01".to_string(),
+                payee: "Keep".to_string(),
+                debit_account: "Expenses:Food".to_string(),
+                credit_account: "Assets:Bank:Revolut".to_string(),
+                amount: "1.00".to_string(),
+            },
+        ).unwrap().id.unwrap();
+        let drop = service.post_transaction(
+            &ws.id,
+            &user.id,
+            &PostTransactionRequest {
+                date: "2026-05-02".to_string(),
+                payee: "Drop".to_string(),
+                debit_account: "Expenses:Food".to_string(),
+                credit_account: "Assets:Bank:Revolut".to_string(),
+                amount: "2.00".to_string(),
+            },
+        ).unwrap().id.unwrap();
+
+        service.delete_transaction(&ws.id, &user.id, &drop).unwrap();
+
+        let entries = service.list_transactions(&ws.id, &user.id).unwrap();
+        let ids: Vec<Uuid> = entries.iter().map(|e| e.id).collect();
+        assert!(ids.contains(&keep));
+        assert!(!ids.contains(&drop));
+        assert_eq!(entries.len(), 1);
+    }
+
+    #[test]
+    fn delete_transaction_missing_returns_404() {
+        let tmp = TempDir::new().unwrap();
+        let service = make_test_service(&tmp);
+        let (user, ws) = mk_ws_with_user(&service, "idnone");
+        let result = service.delete_transaction(&ws.id, &user.id, &Uuid::new_v4());
+        assert!(matches!(result, Err(AppError::NotFound(_))));
+    }
+
+    #[test]
+    fn update_transaction_in_place_preserves_id_and_original_user() {
+        let tmp = TempDir::new().unwrap();
+        let service = make_test_service(&tmp);
+        let (user, ws) = mk_ws_with_user(&service, "idupdater");
+
+        let tx_id = service.post_transaction(
+            &ws.id,
+            &user.id,
+            &PostTransactionRequest {
+                date: "2026-05-01".to_string(),
+                payee: "Coffee".to_string(),
+                debit_account: "Expenses:Food:Coffee".to_string(),
+                credit_account: "Assets:Bank:Revolut".to_string(),
+                amount: "4.00".to_string(),
+            },
+        ).unwrap().id.unwrap();
+
+        // Add a second write-permission user and have them do the edit — the
+        // author metadata should stay as the original poster.
+        let editor = create_test_user(&service.file_store, "editor");
+        let mut ws_with_editor = ws.clone();
+        ws_with_editor.shared_with.push(crate::models::SharedUser {
+            user_id: editor.id,
+            permission: crate::models::Permission::Write,
+        });
+        service.file_store.write_workspace(&ws_with_editor).unwrap();
+
+        let resp = service.update_transaction(
+            &ws.id,
+            &editor.id,
+            &tx_id,
+            &UpdateTransactionRequest {
+                date: "2026-05-02".to_string(),
+                payee: "Coffee v2".to_string(),
+                debit_account: "Expenses:Food:Coffee".to_string(),
+                credit_account: "Assets:Bank:Revolut".to_string(),
+                amount: "5.00".to_string(),
+            },
+        ).unwrap();
+        assert_eq!(resp.id, Some(tx_id));
+
+        let entries = service.list_transactions(&ws.id, &user.id).unwrap();
+        let updated = entries.iter().find(|e| e.id == tx_id).unwrap();
+        assert_eq!(updated.date, "2026-05-02");
+        assert_eq!(updated.payee, "Coffee v2");
+        assert_eq!(updated.postings[0].amount, "$5.00");
+        // Original poster's username is preserved.
+        assert_eq!(updated.posted_by.as_deref(), Some("idupdater"));
+        // Still exactly one entry with this id.
+        assert_eq!(entries.iter().filter(|e| e.id == tx_id).count(), 1);
+    }
+
+    #[test]
+    fn update_transaction_moves_across_period_boundary() {
+        let tmp = TempDir::new().unwrap();
+        let service = make_test_service(&tmp);
+        let (user, ws) = mk_ws_with_user(&service, "idmover");
+
+        // Post in Q2 2026.
+        let tx_id = service.post_transaction(
+            &ws.id,
+            &user.id,
+            &PostTransactionRequest {
+                date: "2026-05-01".to_string(),
+                payee: "Move me".to_string(),
+                debit_account: "Expenses:Food".to_string(),
+                credit_account: "Assets:Bank:Revolut".to_string(),
+                amount: "1.00".to_string(),
+            },
+        ).unwrap().id.unwrap();
+
+        // Update to a Q4 2026 date → should land in the Q4 file, not Q2.
+        service.update_transaction(
+            &ws.id,
+            &user.id,
+            &tx_id,
+            &UpdateTransactionRequest {
+                date: "2026-11-15".to_string(),
+                payee: "Moved".to_string(),
+                debit_account: "Expenses:Food".to_string(),
+                credit_account: "Assets:Bank:Revolut".to_string(),
+                amount: "2.00".to_string(),
+            },
+        ).unwrap();
+
+        let entries = service.list_transactions(&ws.id, &user.id).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, tx_id);
+        assert_eq!(entries[0].date, "2026-11-15");
+        assert_eq!(entries[0].payee, "Moved");
+
+        // Verify placement on disk — the entry should be in the Q4 file.
+        let q2 = service.file_store.period_file_path(&ws, "2026-Q2");
+        let q4 = service.file_store.period_file_path(&ws, "2026-Q4");
+        if q2.exists() {
+            let c = std::fs::read_to_string(&q2).unwrap();
+            assert!(!c.contains(&tx_id.to_string()), "Old period file should no longer contain the tx id");
+        }
+        assert!(q4.exists(), "Q4 period file should have been created");
+        let c4 = std::fs::read_to_string(&q4).unwrap();
+        assert!(c4.contains(&tx_id.to_string()));
+        assert!(c4.contains("Moved"));
+    }
+
+    #[test]
+    fn delete_transaction_requires_write_access() {
+        let tmp = TempDir::new().unwrap();
+        let service = make_test_service(&tmp);
+        let (owner, ws) = mk_ws_with_user(&service, "owner");
+        let reader = create_test_user(&service.file_store, "reader");
+        let mut ws2 = ws.clone();
+        ws2.shared_with.push(crate::models::SharedUser {
+            user_id: reader.id,
+            permission: crate::models::Permission::Read,
+        });
+        service.file_store.write_workspace(&ws2).unwrap();
+
+        let tx_id = service.post_transaction(
+            &ws.id,
+            &owner.id,
+            &PostTransactionRequest {
+                date: "2026-05-01".to_string(),
+                payee: "T".to_string(),
+                debit_account: "Expenses:Food".to_string(),
+                credit_account: "Assets:Bank:Revolut".to_string(),
+                amount: "1.00".to_string(),
+            },
+        ).unwrap().id.unwrap();
+
+        let result = service.delete_transaction(&ws.id, &reader.id, &tx_id);
+        assert!(matches!(result, Err(AppError::Forbidden(_))));
     }
 
     #[test]

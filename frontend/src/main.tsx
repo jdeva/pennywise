@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { ThemeProvider } from '@/context/theme-context'
+import { SeedProvider } from '@/context/seed-context'
 import { AuthProvider } from '@/context/auth-context'
 import { WorkspaceProvider } from '@/context/workspace-context'
 import { routeTree } from '@/routes'
@@ -29,11 +30,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <AuthProvider>
-          <WorkspaceProvider>
-            <RouterProvider router={router} />
-          </WorkspaceProvider>
-        </AuthProvider>
+        <SeedProvider>
+          <AuthProvider>
+            <WorkspaceProvider>
+              <RouterProvider router={router} />
+            </WorkspaceProvider>
+          </AuthProvider>
+        </SeedProvider>
       </ThemeProvider>
     </QueryClientProvider>
   </React.StrictMode>,

@@ -4,7 +4,7 @@ use crate::models::{
     AccountType, AddAccountRequest, AddCategoryRequest, ChangePasswordRequest,
     CreateBudgetRequest, CreateWorkspaceRequest, DeleteAccountRequest, OpeningBalanceRequest,
     PostTransactionRequest, RegisterRequest, ShareWorkspaceRequest, UpdateBudgetRequest,
-    UpdateWorkspaceRequest, UpdateProfileRequest, ValidationDetail,
+    UpdateTransactionRequest, UpdateWorkspaceRequest, UpdateProfileRequest, ValidationDetail,
 };
 
 pub fn is_valid_username_char(c: char) -> bool {
@@ -428,6 +428,34 @@ pub fn validate_post_transaction(
 
 pub fn validate_add_category(req: &AddCategoryRequest) -> Result<(), Vec<ValidationDetail>> {
     validate_category_name(&req.name)
+}
+
+pub fn validate_update_transaction(
+    req: &UpdateTransactionRequest,
+) -> Result<(), Vec<ValidationDetail>> {
+    let mut errors = Vec::new();
+
+    if let Err(mut e) = validate_transaction_date(&req.date) {
+        errors.append(&mut e);
+    }
+    if let Err(mut e) = validate_payee(&req.payee) {
+        errors.append(&mut e);
+    }
+    if let Err(mut e) = validate_amount(&req.amount) {
+        errors.append(&mut e);
+    }
+    if let Err(mut e) = validate_ledger_account_name(&req.debit_account, "debit_account") {
+        errors.append(&mut e);
+    }
+    if let Err(mut e) = validate_ledger_account_name(&req.credit_account, "credit_account") {
+        errors.append(&mut e);
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
 }
 
 /// Validates opening balance amount: non-negative decimal with up to 2 decimal places.

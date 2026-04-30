@@ -685,6 +685,79 @@ impl FileStore {
             .join(format!("account-{}.ledger", account_id))
     }
 
+    /// List all period file paths for a migrated workspace, excluding the
+    /// workspace-level include file. Returns the paths sorted by file name so
+    /// iteration order matches the period labels (lexicographic sort works
+    /// because labels like `2026-Q1`, `2026-Q2` collate correctly).
+    pub fn list_period_files(&self, workspace: &Workspace) -> Result<Vec<PathBuf>, AppError> {
+        let mut out = Vec::new();
+        if workspace.ledger_dir.is_some() {
+            let ws_dir = Path::new(&self.data_path)
+                .join("workspaces")
+                .join(format!("workspace-{}", workspace.id));
+            let root = format!("workspace-{}.ledger", workspace.id);
+            match fs::read_dir(&ws_dir) {
+                Ok(entries) => {
+                    for entry in entries {
+                        let entry = entry.map_err(|e| {
+                            AppError::Internal(format!(
+                                "Failed to read workspace dir {:?}: {}",
+                                ws_dir, e
+                            ))
+                        })?;
+                        let name = entry.file_name();
+                        let name_str = name.to_string_lossy().to_string();
+                        if name_str == root {
+                            continue;
+                        }
+                        if name_str.ends_with(".ledger") {
+                            out.push(entry.path());
+                        }
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    return Err(AppError::Internal(format!(
+                        "Failed to read workspace dir {:?}: {}",
+                        ws_dir, e
+                    )));
+                }
+            }
+        } else {
+            let legacy = self.get_ledger_path(&workspace.id);
+            if legacy.exists() {
+                out.push(legacy);
+            }
+        }
+        out.sort();
+        Ok(out)
+    }
+
+    /// Read a ledger file's contents. Returns `Ok(None)` if the file doesn't exist.
+    pub fn read_ledger_file(&self, path: &Path) -> Result<Option<String>, AppError> {
+        match fs::read_to_string(path) {
+            Ok(s) => Ok(Some(s)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(AppError::Internal(format!(
+                "Failed to read ledger file {:?}: {}",
+                path, e
+            ))),
+        }
+    }
+
+    /// Atomically overwrite a ledger file with new contents.
+    pub fn write_ledger_file(&self, path: &Path, contents: &str) -> Result<(), AppError> {
+        self.atomic_write(path, contents.as_bytes(), None)
+    }
+
+    /// Path to the period file for a given workspace and period label.
+    pub fn period_file_path(&self, workspace: &Workspace, period_label: &str) -> PathBuf {
+        Path::new(&self.data_path)
+            .join("workspaces")
+            .join(format!("workspace-{}", workspace.id))
+            .join(format!("workspace-{}-{}.ledger", workspace.id, period_label))
+    }
+
     /// Returns the ledger path for a workspace — workspace ledger for migrated, legacy path for unmigrated
     pub fn get_workspace_ledger_path(&self, workspace: &Workspace) -> PathBuf {
         if workspace.ledger_dir.is_some() {

@@ -1,14 +1,28 @@
 import apiClient from './client'
 import type {
   PostTransactionRequest,
+  TransactionEntry,
   TransactionResponse,
   BalanceResponse,
   RegisterResponse,
+  UpdateTransactionRequest,
 } from '@/lib/types'
 
 export const transactionsApi = {
   post: (workspaceId: string, data: PostTransactionRequest) =>
     apiClient.post<TransactionResponse>(`/workspaces/${workspaceId}/transactions`, data),
+
+  list: (workspaceId: string) =>
+    apiClient.get<TransactionEntry[]>(`/workspaces/${workspaceId}/transactions`),
+
+  update: (workspaceId: string, txId: string, data: UpdateTransactionRequest) =>
+    apiClient.put<TransactionResponse>(
+      `/workspaces/${workspaceId}/transactions/${txId}`,
+      data,
+    ),
+
+  delete: (workspaceId: string, txId: string) =>
+    apiClient.delete(`/workspaces/${workspaceId}/transactions/${txId}`),
 
   getBalance: (workspaceId: string, opts?: { pivotUser?: boolean; user?: string }) =>
     apiClient.get<BalanceResponse>(`/workspaces/${workspaceId}/balance`, {

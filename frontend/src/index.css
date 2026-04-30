@@ -47,6 +47,48 @@
     --sidebar-border: 30 20% 85%;
   }
 
+  /* Seed-colour presets — override --primary / --ring for both themes.
+     Default is coral (values in :root / .dark above). */
+  [data-seed='ocean'] {
+    --primary: 199 75% 52%;
+    --ring: 199 75% 52%;
+  }
+  [data-seed='ocean'].dark,
+  .dark[data-seed='ocean'] {
+    --primary: 199 78% 60%;
+    --ring: 199 78% 60%;
+  }
+
+  [data-seed='emerald'] {
+    --primary: 158 55% 45%;
+    --ring: 158 55% 45%;
+  }
+  [data-seed='emerald'].dark,
+  .dark[data-seed='emerald'] {
+    --primary: 158 55% 55%;
+    --ring: 158 55% 55%;
+  }
+
+  [data-seed='plum'] {
+    --primary: 278 50% 58%;
+    --ring: 278 50% 58%;
+  }
+  [data-seed='plum'].dark,
+  .dark[data-seed='plum'] {
+    --primary: 278 55% 68%;
+    --ring: 278 55% 68%;
+  }
+
+  [data-seed='butter'] {
+    --primary: 36 88% 55%;
+    --ring: 36 88% 55%;
+  }
+  [data-seed='butter'].dark,
+  .dark[data-seed='butter'] {
+    --primary: 40 92% 62%;
+    --ring: 40 92% 62%;
+  }
+
   .dark {
     /* Deep aubergine (dark) */
     --background: 270 18% 11%;         /* #1F1A24 */

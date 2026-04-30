@@ -41,6 +41,28 @@ export interface PostTransactionRequest {
 
 export interface TransactionResponse {
   formatted_text: string
+  id?: string
+}
+
+export interface UpdateTransactionRequest {
+  date: string
+  payee: string
+  debit_account: string
+  credit_account: string
+  amount: string
+}
+
+export interface TransactionPosting {
+  account: string
+  amount: string
+}
+
+export interface TransactionEntry {
+  id: string
+  date: string
+  payee: string
+  postings: TransactionPosting[]
+  posted_by?: string
 }
 
 export interface BalanceResponse {

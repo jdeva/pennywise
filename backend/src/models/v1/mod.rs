@@ -14,7 +14,8 @@ pub use workspace::{
 pub use transaction::{
     AddCategoryRequest, BalanceQuery, BalanceResponse, CategoryType, DeleteCategoryRequest,
     ListCategoriesQuery, OpeningBalanceRequest, PostTransactionRequest, RegisterQuery,
-    RegisterResponse, TransactionResponse, UserCategories,
+    RegisterResponse, TransactionEntry, TransactionPosting, TransactionResponse,
+    UpdateTransactionRequest, UserCategories,
 };
 pub use user::{
     AuthResponse, ChangePasswordRequest, DeactivateRequest, LoginRequest, RefreshRequest,

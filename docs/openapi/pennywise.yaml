@@ -556,7 +556,9 @@ paths:
     post:
       tags: [Transactions]
       summary: Post a transaction
-      description: Records a double-entry ledger transaction to the workspace. Requires owner or write access.
+      description: |
+        Records a double-entry ledger transaction to the workspace. Requires owner or write access.
+        The response includes a stable `id` that can be used to update or delete the transaction later.
       operationId: postTransaction
       security:
         - bearerAuth: []
@@ -577,6 +579,98 @@ paths:
                 $ref: '#/components/schemas/TransactionResponse'
         '400':
           $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      tags: [Transactions]
+      summary: List transactions with IDs
+      description: |
+        Returns all transactions in the workspace that carry a stable `Id` tag
+        (i.e. posted via this API). Legacy hand-written entries without IDs are
+        omitted — use `/register` for the full raw ledger-cli output.
+        Sorted newest first.
+      operationId: listTransactions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: Transaction list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TransactionEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/transactions/{tx_id}:
+    put:
+      tags: [Transactions]
+      summary: Update a transaction
+      description: |
+        Rewrites the transaction in place, preserving its ID and the original
+        poster's username (audit trail). Requires write access. If the new
+        date crosses a rotation-period boundary the entry is moved to the
+        correct period file.
+      operationId: updateTransaction
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - in: path
+          name: tx_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTransactionRequest'
+      responses:
+        '200':
+          description: Transaction updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Transactions]
+      summary: Delete a transaction
+      description: Deletes the transaction block from the period file. Requires write access.
+      operationId: deleteTransaction
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - in: path
+          name: tx_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Transaction deleted
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1309,8 +1403,70 @@ components:
       properties:
         formatted_text:
           type: string
-          description: The formatted ledger-cli entry that was appended
-          example: "2025-07-15 Grocery Store\n    Expenses:Food:Groceries  $42.50\n    ; User: alice\n    Assets:Checking  -$42.50\n    ; User: alice"
+          description: The formatted ledger-cli entry that was appended (or rewritten, on update)
+          example: "2025-07-15 Grocery Store\n    ; Id: 11111111-1111-1111-1111-111111111111\n    Expenses:Food:Groceries  $42.50\n    ; User: alice\n    Assets:Checking  -$42.50\n    ; User: alice"
+        id:
+          type: string
+          format: uuid
+          description: Stable identifier for the transaction, persisted as an `; Id:` tag in the ledger file.
+          example: "11111111-1111-1111-1111-111111111111"
+
+    UpdateTransactionRequest:
+      type: object
+      required: [date, payee, debit_account, credit_account, amount]
+      properties:
+        date:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          example: "2025-07-15"
+        payee:
+          type: string
+          minLength: 1
+          maxLength: 256
+        debit_account:
+          type: string
+          minLength: 1
+          maxLength: 256
+        credit_account:
+          type: string
+          minLength: 1
+          maxLength: 256
+        amount:
+          type: string
+          example: "42.50"
+
+    TransactionPosting:
+      type: object
+      properties:
+        account:
+          type: string
+          example: "Expenses:Food:Coffee"
+        amount:
+          type: string
+          example: "$4.50"
+
+    TransactionEntry:
+      type: object
+      required: [id, date, payee, postings]
+      properties:
+        id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          example: "2026-05-01"
+        payee:
+          type: string
+          example: "Coffee"
+        postings:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionPosting'
+        posted_by:
+          type: string
+          nullable: true
+          example: "alice"
+          description: Username of the original poster, from the `; User:` tag on the entry
 
     BalanceResponse:
       type: object

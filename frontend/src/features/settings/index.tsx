@@ -85,7 +85,7 @@ export function SettingsPage() {
         <TabsList>
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="accounts">Accounts</TabsTrigger>
-          <TabsTrigger value="workspaces">Workspaces</TabsTrigger>
+          <TabsTrigger value="workspaces">Lairs</TabsTrigger>
           {user?.is_admin && <TabsTrigger value="users">Users</TabsTrigger>}
         </TabsList>
 

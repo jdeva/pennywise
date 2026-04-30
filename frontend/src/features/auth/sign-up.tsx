@@ -40,7 +40,7 @@ export function SignUpPage() {
             <span className="font-display text-xl font-semibold">P</span>
           </div>
           <CardTitle className="font-display text-3xl">Create your account</CardTitle>
-          <CardDescription>Start tracking your money in seconds</CardDescription>
+          <CardDescription>Every cent gets a home in your lair.</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
           <CardContent className="space-y-4">

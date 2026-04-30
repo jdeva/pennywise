@@ -8,13 +8,13 @@ import { useWorkspace } from '@/context/workspace-context'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { transactionSchema, type TransactionForm } from '@/lib/schemas'
 
 type TxType = 'expense' | 'income' | 'transfer'
 
 interface Props {
   onSuccess: () => void
+  onCancel?: () => void
 }
 
 // Account type prefixes for filtering
@@ -36,7 +36,7 @@ const TX_TYPE_LABELS: { value: TxType; label: string }[] = [
   { value: 'transfer', label: 'Transfer' },
 ]
 
-export function TransactionForm({ onSuccess }: Props) {
+export function TransactionForm({ onSuccess, onCancel }: Props) {
   const { activeWorkspace } = useWorkspace()
   const [error, setError] = useState<string | null>(null)
   const [txType, setTxType] = useState<TxType>('expense')
@@ -122,12 +122,8 @@ export function TransactionForm({ onSuccess }: Props) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Post Transaction</CardTitle>
-      </CardHeader>
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <CardContent className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="flex h-full flex-col">
+      <div className="flex-1 space-y-5 overflow-y-auto">
           {error && (
             <div role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               {error}
@@ -195,11 +191,11 @@ export function TransactionForm({ onSuccess }: Props) {
               />
               {errors.debit_account && <p className="text-sm text-destructive">{errors.debit_account.message}</p>}
               {showDebitSuggestions && debitAccounts.length > 0 && (
-                <ul className="absolute z-10 mt-1 max-h-40 w-full overflow-auto rounded-md border bg-popover p-1 text-sm shadow-md">
+                <ul className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover p-1 text-sm shadow-md">
                   {debitAccounts.slice(0, 10).map((a) => (
                     <li
                       key={a}
-                      className="cursor-pointer rounded px-2 py-1 hover:bg-accent"
+                      className="cursor-pointer truncate rounded px-2 py-1.5 hover:bg-accent"
                       onMouseDown={() => { setValue('debit_account', a); setShowDebitSuggestions(false) }}
                     >
                       {a}
@@ -220,11 +216,11 @@ export function TransactionForm({ onSuccess }: Props) {
               />
               {errors.credit_account && <p className="text-sm text-destructive">{errors.credit_account.message}</p>}
               {showCreditSuggestions && creditAccounts.length > 0 && (
-                <ul className="absolute z-10 mt-1 max-h-40 w-full overflow-auto rounded-md border bg-popover p-1 text-sm shadow-md">
+                <ul className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover p-1 text-sm shadow-md">
                   {creditAccounts.slice(0, 10).map((a) => (
                     <li
                       key={a}
-                      className="cursor-pointer rounded px-2 py-1 hover:bg-accent"
+                      className="cursor-pointer truncate rounded px-2 py-1.5 hover:bg-accent"
                       onMouseDown={() => { setValue('credit_account', a); setShowCreditSuggestions(false) }}
                     >
                       {a}
@@ -235,11 +231,17 @@ export function TransactionForm({ onSuccess }: Props) {
             </div>
           </div>
 
-          <Button type="submit" disabled={isSubmitting || !activeWorkspace}>
-            {isSubmitting ? 'Posting…' : 'Post Transaction'}
+      </div>
+      <div className="mt-5 flex items-center justify-end gap-2 border-t border-border pt-4">
+        {onCancel && (
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
           </Button>
-        </CardContent>
-      </form>
-    </Card>
+        )}
+        <Button type="submit" disabled={isSubmitting || !activeWorkspace}>
+          {isSubmitting ? 'Posting…' : 'Post transaction'}
+        </Button>
+      </div>
+    </form>
   )
 }

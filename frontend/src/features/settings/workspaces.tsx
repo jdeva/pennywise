@@ -51,7 +51,7 @@ function WorkspaceDetail({ workspace }: { workspace: WorkspacePublic }) {
       queryClient.invalidateQueries({ queryKey: ['workspaces'] })
     },
     onError: (err: any) => {
-      setShareError(err?.response?.data?.error || 'Failed to share workspace')
+      setShareError(err?.response?.data?.error || 'Failed to invite user')
     },
   })
 
@@ -70,13 +70,13 @@ function WorkspaceDetail({ workspace }: { workspace: WorkspacePublic }) {
     },
     onError: (err: any) => {
       setDeactivateError(
-        err?.response?.data?.error || 'Failed to deactivate workspace'
+        err?.response?.data?.error || 'Failed to deactivate lair'
       )
     },
   })
 
   const handleDeactivate = () => {
-    if (!confirm('Are you sure you want to deactivate this workspace? This cannot be undone.')) return
+    if (!confirm('Deactivate this lair? This cannot be undone.')) return
     deactivateMutation.mutate()
   }
 
@@ -84,7 +84,7 @@ function WorkspaceDetail({ workspace }: { workspace: WorkspacePublic }) {
     <div className="space-y-4 border-t pt-4">
       {/* Name Edit */}
       <div className="space-y-2">
-        <Label htmlFor={`name-${workspace.id}`}>Workspace Name</Label>
+        <Label htmlFor={`name-${workspace.id}`}>Lair name</Label>
         <form
           className="flex gap-2"
           onSubmit={(e) => {
@@ -122,9 +122,9 @@ function WorkspaceDetail({ workspace }: { workspace: WorkspacePublic }) {
 
       {/* Shared Users */}
       <div className="space-y-2">
-        <Label>Shared Users</Label>
+        <Label>Roommates</Label>
         {workspace.shared_with.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Not shared with anyone.</p>
+          <p className="text-sm text-muted-foreground">You're alone in this lair — invite someone below.</p>
         ) : (
           <ul className="space-y-1">
             {workspace.shared_with.map((su) => (
@@ -133,7 +133,7 @@ function WorkspaceDetail({ workspace }: { workspace: WorkspacePublic }) {
                 className="flex items-center justify-between rounded px-2 py-1 hover:bg-muted"
               >
                 <span className="text-sm">
-                  {su.user_id}{' '}
+                  <span className="font-medium">{su.username || su.user_id}</span>{' '}
                   <span className="text-muted-foreground">({su.permission})</span>
                 </span>
                 {isOwner && (
@@ -143,7 +143,7 @@ function WorkspaceDetail({ workspace }: { workspace: WorkspacePublic }) {
                     className="h-7 w-7"
                     onClick={() => unshareMutation.mutate(su.user_id)}
                     disabled={unshareMutation.isPending}
-                    aria-label={`Unshare from ${su.user_id}`}
+                    aria-label={`Unshare from ${su.username || su.user_id}`}
                   >
                     <UserMinus className="h-4 w-4" />
                   </Button>
@@ -157,7 +157,7 @@ function WorkspaceDetail({ workspace }: { workspace: WorkspacePublic }) {
       {/* Share Form */}
       {isOwner && (
         <div className="space-y-2">
-          <Label>Share Workspace</Label>
+          <Label>Invite into this lair</Label>
           {shareError && (
             <div role="alert" className="rounded-md bg-destructive/10 p-2 text-sm text-destructive">
               {shareError}
@@ -173,7 +173,7 @@ function WorkspaceDetail({ workspace }: { workspace: WorkspacePublic }) {
             <Input
               value={shareUsername}
               onChange={(e) => setShareUsername(e.target.value)}
-              placeholder="Username"
+              placeholder="Their username"
               className="flex-1"
             />
             <select
@@ -190,7 +190,7 @@ function WorkspaceDetail({ workspace }: { workspace: WorkspacePublic }) {
               size="sm"
               disabled={shareMutation.isPending || !shareUsername.trim()}
             >
-              Share
+              Invite
             </Button>
           </form>
         </div>
@@ -211,7 +211,7 @@ function WorkspaceDetail({ workspace }: { workspace: WorkspacePublic }) {
             disabled={deactivateMutation.isPending}
           >
             <Power className="mr-2 h-4 w-4" />
-            Deactivate Workspace
+            Deactivate lair
           </Button>
         </div>
       )}
@@ -278,7 +278,7 @@ export function WorkspacesTab() {
         <Card>
           <CardContent className="py-6">
             <p className="text-sm text-muted-foreground">
-              No workspaces found. Create one from the workspace dropdown in the header.
+              No lairs yet. Create one from the lair switcher in the sidebar.
             </p>
           </CardContent>
         </Card>

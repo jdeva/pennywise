@@ -40,7 +40,7 @@ export function SignInPage() {
             <span className="font-display text-xl font-semibold">P</span>
           </div>
           <CardTitle className="font-display text-3xl">Welcome back</CardTitle>
-          <CardDescription>Sign in to your Pennywise account</CardDescription>
+          <CardDescription>Back to your lair</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
           <CardContent className="space-y-4">

@@ -1,0 +1,1455 @@
+openapi: 3.0.3
+info:
+  title: Pennywise API
+  description: Personal finance tracker API — user management, workspaces, sharing, transactions, and ledger queries.
+  version: 2.0.0
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development
+
+tags:
+  - name: Auth
+    description: Public authentication endpoints
+  - name: Users
+    description: Authenticated user profile endpoints
+  - name: Workspaces
+    description: Workspace management and sharing
+  - name: Chart of Accounts
+    description: Per-user chart of accounts management (assets, expenses, income, liabilities, equity)
+  - name: Categories
+    description: Per-user expense and income category management
+  - name: Transactions
+    description: Transaction posting, balance queries, and register queries
+  - name: Budgets
+    description: Workspace budgeting toggle and budget definition management
+
+paths:
+  /auth/health:
+    get:
+      tags: [Auth]
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  service:
+                    type: string
+                    example: pennywise-backend
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with credentials
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Tokens refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get current user profile
+      operationId: getProfile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPublic'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [Users]
+      summary: Update user profile
+      operationId: updateProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPublic'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /users/me/password:
+    post:
+      tags: [Users]
+      summary: Change password
+      operationId: changePassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/deactivate:
+    post:
+      tags: [Users]
+      summary: Deactivate workspace
+      operationId: deactivateUser
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeactivateRequest'
+      responses:
+        '200':
+          description: Workspace deactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workspaces:
+    post:
+      tags: [Workspaces]
+      summary: Create workspace
+      operationId: createWorkspace
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkspaceRequest'
+      responses:
+        '201':
+          description: Workspace created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspacePublic'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      tags: [Workspaces]
+      summary: List user's workspaces
+      description: Returns all workspaces the user owns or has been shared with.
+      operationId: listWorkspaces
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of workspaces
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkspacePublic'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workspaces/{id}:
+    get:
+      tags: [Workspaces]
+      summary: Get single workspace
+      operationId: getWorkspace
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: Workspace details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspacePublic'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Workspaces]
+      summary: Update workspace name
+      description: Requires owner or read-write shared access.
+      operationId: updateWorkspace
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkspaceRequest'
+      responses:
+        '200':
+          description: Workspace updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspacePublic'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/deactivate:
+    post:
+      tags: [Workspaces]
+      summary: Deactivate workspace
+      description: Soft-delete. Owner only.
+      operationId: deactivateWorkspace
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: Workspace deactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/share:
+    post:
+      tags: [Workspaces]
+      summary: Share workspace with user
+      description: Owner grants read or read-write access to another user. Default permission is read.
+      operationId: shareWorkspace
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareWorkspaceRequest'
+      responses:
+        '200':
+          description: Workspace shared
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspacePublic'
+        '400':
+          description: Cannot share with yourself
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /workspaces/{id}/share/{user_id}:
+    delete:
+      tags: [Workspaces]
+      summary: Unshare workspace from user
+      description: Owner removes another user's access.
+      operationId: unshareWorkspace
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Access removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspacePublic'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /categories:
+    get:
+      tags: [Categories]
+      summary: List user's categories
+      description: Returns the authenticated user's expense or income categories.
+      operationId: listCategories
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/CategoryType'
+          description: Category type to list
+      responses:
+        '200':
+          description: List of category names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example: ["Expenses:Food:Groceries", "Expenses:Transport:Gas"]
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Categories]
+      summary: Add a category
+      description: Adds a new expense or income category for the authenticated user.
+      operationId: addCategory
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddCategoryRequest'
+      responses:
+        '201':
+          description: Category added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [Categories]
+      summary: Delete a category
+      description: Removes an expense or income category from the authenticated user's list.
+      operationId: deleteCategory
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteCategoryRequest'
+      responses:
+        '200':
+          description: Category deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chart-of-accounts:
+    get:
+      tags: [Chart of Accounts]
+      summary: List accounts by type
+      description: Returns the authenticated user's ledger accounts for the specified account type.
+      operationId: listChartAccounts
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/AccountType'
+          description: Account type to list
+      responses:
+        '200':
+          description: List of account names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example: ["Assets:Checking", "Assets:Savings"]
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Chart of Accounts]
+      summary: Add an account to the chart
+      description: Adds a new ledger account name under the specified type for the authenticated user.
+      operationId: addChartAccount
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddAccountRequest'
+      responses:
+        '201':
+          description: Account added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [Chart of Accounts]
+      summary: Delete an account from the chart
+      description: Removes a ledger account name from the specified type for the authenticated user.
+      operationId: deleteChartAccount
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteAccountRequest'
+      responses:
+        '200':
+          description: Account deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/transactions:
+    post:
+      tags: [Transactions]
+      summary: Post a transaction
+      description: Records a double-entry ledger transaction to the workspace. Requires owner or write access.
+      operationId: postTransaction
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostTransactionRequest'
+      responses:
+        '201':
+          description: Transaction posted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/initialize:
+    post:
+      tags: [Transactions]
+      summary: Set opening balance
+      description: Posts an opening balance transaction (debit to asset account, credit to Equity:Opening Balances). Owner only. Idempotent — returns 409 if an opening balance already exists.
+      operationId: initializeWorkspace
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpeningBalanceRequest'
+      responses:
+        '201':
+          description: Opening balance posted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /workspaces/{id}/balance:
+    get:
+      tags: [Transactions]
+      summary: Query account balance
+      description: Returns the current balance of the workspace via ledger-cli. Requires owner, write, or read access.
+      operationId: queryBalance
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - name: pivot_user
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: When true, returns a per-user balance breakdown
+      responses:
+        '200':
+          description: Balance output
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          description: Ledger-cli execution error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /workspaces/{id}/register:
+    get:
+      tags: [Transactions]
+      summary: Query transaction history
+      description: Returns the transaction register for the workspace via ledger-cli. Requires owner, write, or read access.
+      operationId: queryRegister
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - name: user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter transactions by username
+      responses:
+        '200':
+          description: Register output
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          description: Ledger-cli execution error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /workspaces/{id}/budgeting:
+    put:
+      tags: [Budgets]
+      summary: Enable or disable budgeting
+      description: Toggles budgeting features for a workspace. Requires owner or write access.
+      operationId: setBudgeting
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetBudgetingRequest'
+      responses:
+        '200':
+          description: Budgeting setting updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspacePublic'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      tags: [Budgets]
+      summary: Get budgeting status
+      description: Returns whether budgeting is enabled for a workspace.
+      operationId: getBudgeting
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: Budgeting status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  budgeting_enabled:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/budgets:
+    post:
+      tags: [Budgets]
+      summary: Create a budget definition
+      description: Adds a periodic budget definition to the workspace. Requires budgeting to be enabled.
+      operationId: createBudget
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBudgetRequest'
+      responses:
+        '201':
+          description: Budget definition created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetDefinitionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      tags: [Budgets]
+      summary: List budget definitions
+      description: Returns all budget definitions for the workspace.
+      operationId: listBudgets
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: List of budget definitions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BudgetDefinition'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/budgets/report:
+    get:
+      tags: [Budgets]
+      summary: Budget vs actual report
+      description: Returns a budget report comparing budgeted amounts to actual spending.
+      operationId: budgetReport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - name: begin
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Start date filter (YYYY-MM-DD)
+        - name: end
+          in: query
+          required: false
+          schema:
+            type: string
+          description: End date filter (YYYY-MM-DD)
+      responses:
+        '200':
+          description: Budget report output
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetReportResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/budgets/unbudgeted:
+    get:
+      tags: [Budgets]
+      summary: Unbudgeted expenses report
+      description: Returns expenses that are not covered by any budget definition.
+      operationId: unbudgetedReport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - name: begin
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Start date filter (YYYY-MM-DD)
+        - name: end
+          in: query
+          required: false
+          schema:
+            type: string
+          description: End date filter (YYYY-MM-DD)
+      responses:
+        '200':
+          description: Unbudgeted report output
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetReportResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/budgets/forecast:
+    get:
+      tags: [Budgets]
+      summary: Budget forecast
+      description: Projects future budget status based on current spending trends.
+      operationId: forecastReport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Forecast end date (YYYY-MM-DD)
+      responses:
+        '200':
+          description: Forecast output
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetReportResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/budgets/{index}:
+    put:
+      tags: [Budgets]
+      summary: Update a budget definition
+      description: Updates a budget definition by index. Requires budgeting to be enabled.
+      operationId: updateBudget
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - name: index
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+          description: Zero-based index of the budget definition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBudgetRequest'
+      responses:
+        '200':
+          description: Budget definition updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetDefinitionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Budgets]
+      summary: Delete a budget definition
+      description: Removes a budget definition by index.
+      operationId: deleteBudget
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - name: index
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+          description: Zero-based index of the budget definition
+      responses:
+        '200':
+          description: Budget definition deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    WorkspaceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Unauthorized:
+      description: Not authenticated or invalid token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Resource already exists
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [username, email, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: '^[a-zA-Z0-9_-]+$'
+          example: johndoe
+        email:
+          type: string
+          format: email
+          example: john@example.com
+        password:
+          type: string
+          minLength: 8
+          example: SecurePass1
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: johndoe
+        password:
+          type: string
+          example: SecurePass1
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+        email:
+          type: string
+          format: email
+
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+        new_password:
+          type: string
+          minLength: 8
+
+    DeactivateRequest:
+      type: object
+      required: [password]
+      properties:
+        password:
+          type: string
+
+    CreateWorkspaceRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: Home Expenses
+
+    UpdateWorkspaceRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: Vacation Fund
+
+    ShareWorkspaceRequest:
+      type: object
+      required: [username]
+      properties:
+        username:
+          type: string
+          example: bob
+        permission:
+          type: string
+          enum: [read, write]
+          default: read
+          description: Access level — read (view only) or write (can update)
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        user:
+          $ref: '#/components/schemas/UserPublic'
+
+    UserPublic:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        master_ledger:
+          type: string
+        owned_accounts:
+          type: array
+          items:
+            type: string
+            format: uuid
+        shared_accounts:
+          type: array
+          items:
+            type: string
+            format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WorkspacePublic:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        owner_id:
+          type: string
+          format: uuid
+        currency:
+          type: string
+          example: USD
+        shared_with:
+          type: array
+          items:
+            $ref: '#/components/schemas/SharedUser'
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        ledger_dir:
+          type: string
+          nullable: true
+          description: Relative path to workspace ledger directory (null for legacy workspaces)
+          example: "workspaces/workspace-550e8400-.../""
+        rotation_period:
+          $ref: '#/components/schemas/RotationPeriod'
+        budgeting_enabled:
+          type: boolean
+          default: false
+          description: Whether budgeting features are enabled for this workspace
+
+    SharedUser:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        permission:
+          type: string
+          enum: [read, write]
+
+    SuccessMessage:
+      type: object
+      properties:
+        message:
+          type: string
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+    ValidationError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Validation failed
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    CategoryType:
+      type: string
+      enum: [expense, income]
+      description: Discriminator for expense vs income categories
+
+    AddCategoryRequest:
+      type: object
+      required: [name, category_type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+          example: "Expenses:Food:Groceries"
+          description: Hierarchical ledger-cli account name (alphanumeric, colons, spaces, hyphens, underscores)
+        category_type:
+          $ref: '#/components/schemas/CategoryType'
+
+    DeleteCategoryRequest:
+      type: object
+      required: [name, category_type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+          example: "Expenses:Food:Groceries"
+        category_type:
+          $ref: '#/components/schemas/CategoryType'
+
+    OpeningBalanceRequest:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: string
+          example: "1000.00"
+          description: Non-negative decimal amount with up to two decimal places
+        date:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          example: "2025-07-15"
+          description: Optional date in ISO 8601 format (YYYY-MM-DD). Defaults to current date.
+        account_name:
+          type: string
+          minLength: 1
+          maxLength: 256
+          example: "Assets:Checking"
+          description: Optional asset account name. Defaults to "Assets:Opening Balance".
+
+    PostTransactionRequest:
+      type: object
+      required: [date, payee, debit_account, credit_account, amount]
+      properties:
+        date:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          example: "2025-07-15"
+          description: Transaction date in ISO 8601 format (YYYY-MM-DD)
+        payee:
+          type: string
+          minLength: 1
+          maxLength: 256
+          example: "Grocery Store"
+        debit_account:
+          type: string
+          minLength: 1
+          maxLength: 256
+          example: "Expenses:Food:Groceries"
+          description: Debit account name (alphanumeric, colons, spaces, hyphens, underscores)
+        credit_account:
+          type: string
+          minLength: 1
+          maxLength: 256
+          example: "Assets:Checking"
+          description: Credit account name (alphanumeric, colons, spaces, hyphens, underscores)
+        amount:
+          type: string
+          example: "42.50"
+          description: Positive decimal amount with up to two decimal places
+
+    TransactionResponse:
+      type: object
+      properties:
+        formatted_text:
+          type: string
+          description: The formatted ledger-cli entry that was appended
+          example: "2025-07-15 Grocery Store\n    Expenses:Food:Groceries  $42.50\n    ; User: alice\n    Assets:Checking  -$42.50\n    ; User: alice"
+
+    BalanceResponse:
+      type: object
+      properties:
+        output:
+          type: string
+          description: Raw ledger-cli balance output
+
+    RegisterResponse:
+      type: object
+      properties:
+        output:
+          type: string
+          description: Raw ledger-cli register output
+
+    UserCategories:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        expense:
+          type: array
+          items:
+            type: string
+          description: List of expense category names
+        income:
+          type: array
+          items:
+            type: string
+          description: List of income category names
+
+    AccountType:
+      type: string
+      enum: [assets, expenses, income, liabilities, equity]
+      description: The five standard ledger account types
+
+    RotationPeriod:
+      type: string
+      enum: [quarterly, semiannual, yearly]
+      default: quarterly
+      description: Period rotation setting for ledger file splitting
+
+    AddAccountRequest:
+      type: object
+      required: [name, account_type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+          example: "Assets:Checking"
+          description: Ledger account name (alphanumeric, colons, spaces, hyphens, underscores)
+        account_type:
+          $ref: '#/components/schemas/AccountType'
+
+    DeleteAccountRequest:
+      type: object
+      required: [name, account_type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+          example: "Assets:Checking"
+        account_type:
+          $ref: '#/components/schemas/AccountType'
+
+    SetBudgetingRequest:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: Whether to enable or disable budgeting for the workspace
+
+    CreateBudgetRequest:
+      type: object
+      required: [period, account, amount]
+      properties:
+        period:
+          type: string
+          example: "Every Month"
+          description: Budget period expression (e.g., "Every Month", "Every Week")
+        account:
+          type: string
+          example: "Expenses:Food"
+          description: Ledger account name for the budget
+        amount:
+          type: string
+          example: "500.00"
+          description: Budget amount as a decimal string
+        currency:
+          type: string
+          example: "$"
+          description: Currency symbol (defaults to "$")
+
+    UpdateBudgetRequest:
+      type: object
+      required: [period, account, amount]
+      properties:
+        period:
+          type: string
+          example: "Every Month"
+        account:
+          type: string
+          example: "Expenses:Food"
+        amount:
+          type: string
+          example: "600.00"
+        currency:
+          type: string
+          example: "$"
+
+    BudgetDefinition:
+      type: object
+      properties:
+        period:
+          type: string
+        account:
+          type: string
+        amount:
+          type: number
+          format: double
+        currency:
+          type: string
+
+    BudgetDefinitionResponse:
+      type: object
+      properties:
+        formatted_text:
+          type: string
+          description: The formatted ledger-cli budget entry
+        definition:
+          $ref: '#/components/schemas/BudgetDefinition'
+
+    BudgetReportResponse:
+      type: object
+      properties:
+        output:
+          type: string
+          description: Raw ledger-cli budget report output

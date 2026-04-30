@@ -1,0 +1,61 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: pennywise-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pennywise-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - LEDGER_DATA_PATH=/data/ledger
+      - RUST_LOG=info
+      - JWT_SECRET=pennywise-jwt-secret-change-this-in-production-minimum-32-chars
+    volumes:
+      - ledger-data:/data/ledger
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: pennywise-worker
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - LEDGER_DATA_PATH=/data/ledger
+      - SYNC_INTERVAL_SECONDS=300
+      - RUST_LOG=info
+    volumes:
+      - ledger-data:/data/ledger
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api/v1
+    container_name: pennywise-frontend
+    ports:
+      - "5173:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  ledger-data:

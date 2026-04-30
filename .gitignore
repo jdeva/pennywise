@@ -1,0 +1,51 @@
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+
+# Node
+node_modules/
+dist/
+build/
+package-lock.json
+yarn.lock
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local Claude Code overrides (machine-specific permissions/settings)
+.claude/settings.local.json
+
+# Kiro artifacts (spec-driven dev trail, not needed in repo)
+.kiro/
+
+# Claude Code local overrides
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data
+data/
+*.ledger
+*.journal
+dump.rdb
+
+# Local dev artifacts
+url
+*.cookies
+
+# Generated API docs (regenerated from docs/openapi/pennywise.yaml)
+docs/openapi/*.html
+
+# Logs
+*.log

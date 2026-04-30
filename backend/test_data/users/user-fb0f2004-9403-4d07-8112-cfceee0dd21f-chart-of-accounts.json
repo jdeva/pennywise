@@ -1,0 +1,16 @@
+{
+  "user_id": "fb0f2004-9403-4d07-8112-cfceee0dd21f",
+  "assets": [
+    "Assets:Checking"
+  ],
+  "expenses": [
+    "Expenses:Food:Groceries",
+    "Expenses:Utilities:Electric",
+    "Expenses:Food:Coffee"
+  ],
+  "income": [],
+  "liabilities": [],
+  "equity": [
+    "Equity:Opening Balances"
+  ]
+}

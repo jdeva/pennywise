@@ -73,6 +73,14 @@ pub struct SharedUser {
     pub permission: Permission,
 }
 
+/// Shared-user entry in API responses — like SharedUser but with username resolved.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SharedUserPublic {
+    pub user_id: Uuid,
+    pub username: String,
+    pub permission: Permission,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Permission {
@@ -101,7 +109,7 @@ pub struct WorkspacePublic {
     pub name: String,
     pub owner_id: Uuid,
     pub currency: String,
-    pub shared_with: Vec<SharedUser>,
+    pub shared_with: Vec<SharedUserPublic>,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -116,12 +124,21 @@ pub struct WorkspacePublic {
 
 impl From<Workspace> for WorkspacePublic {
     fn from(a: Workspace) -> Self {
+        let shared_with = a
+            .shared_with
+            .into_iter()
+            .map(|s| SharedUserPublic {
+                user_id: s.user_id,
+                username: String::new(),
+                permission: s.permission,
+            })
+            .collect();
         WorkspacePublic {
             id: a.id,
             name: a.name,
             owner_id: a.owner_id,
             currency: a.currency,
-            shared_with: a.shared_with,
+            shared_with,
             is_active: a.is_active,
             created_at: a.created_at,
             updated_at: a.updated_at,

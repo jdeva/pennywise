@@ -1,4 +1,4 @@
-use crate::models::{RotationPeriod, Workspace, Permission, SharedUser};
+use crate::models::{RotationPeriod, Workspace, WorkspacePublic, Permission, SharedUser};
 use crate::services::cache::Cache;
 use crate::services::file_store::FileStore;
 use crate::services::user::UserService;
@@ -32,6 +32,18 @@ impl WorkspaceService {
             user_service,
             cache_ttl,
         }
+    }
+
+    /// Converts a Workspace to WorkspacePublic with usernames resolved for shared users.
+    /// Silently uses empty string if a user can't be loaded (shouldn't happen in practice).
+    pub fn to_public(&self, workspace: Workspace) -> WorkspacePublic {
+        let mut public = WorkspacePublic::from(workspace);
+        for entry in public.shared_with.iter_mut() {
+            if let Ok(Some(profile)) = self.user_service.get_profile(&entry.user_id) {
+                entry.username = profile.username;
+            }
+        }
+        public
     }
 
     pub fn create_workspace(

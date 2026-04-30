@@ -9,7 +9,7 @@ pub use chart_of_accounts::{
 };
 pub use workspace::{
     Workspace, WorkspacePublic, CreateWorkspaceRequest, Permission, RotationPeriod,
-    SetBudgetingRequest, ShareWorkspaceRequest, SharedUser, UpdateWorkspaceRequest,
+    SetBudgetingRequest, ShareWorkspaceRequest, SharedUser, SharedUserPublic, UpdateWorkspaceRequest,
 };
 pub use transaction::{
     AddCategoryRequest, BalanceQuery, BalanceResponse, CategoryType, DeleteCategoryRequest,

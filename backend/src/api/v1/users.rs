@@ -5,7 +5,7 @@ use crate::models::{
     AuthResponse, ChangePasswordRequest, DeactivateRequest, LoginRequest, RefreshRequest,
     RegisterRequest, UpdateProfileRequest, UserPublic,
 };
-use crate::services::{Cache, UserService};
+use crate::services::{Cache, UserService, WorkspaceService};
 use crate::utils::auth::{
     create_access_token, create_refresh_token, hash_refresh_token, get_user_id_from_request,
     JwtConfig,
@@ -18,7 +18,8 @@ pub fn auth_config(cfg: &mut web::ServiceConfig) {
         web::scope("/auth")
             .route("/register", web::post().to(register))
             .route("/login", web::post().to(login))
-            .route("/refresh", web::post().to(refresh)),
+            .route("/refresh", web::post().to(refresh))
+            .route("/logout", web::post().to(logout)),
     );
 }
 
@@ -36,6 +37,7 @@ pub fn users_config(cfg: &mut web::ServiceConfig) {
 async fn register(
     data: web::Json<RegisterRequest>,
     user_service: web::Data<UserService>,
+    workspace_service: web::Data<WorkspaceService>,
     jwt_config: web::Data<JwtConfig>,
     cache: web::Data<Cache>,
 ) -> Result<HttpResponse, AppError> {
@@ -48,6 +50,18 @@ async fn register(
         data.email.trim().to_string(),
         data.password.clone(),
     )?;
+
+    // Give every new user a starter workspace. Log and continue on failure —
+    // the user account is already persisted and we don't want registration
+    // to hard-fail over a convenience step.
+    if let Err(e) = workspace_service.create_workspace(&profile.id, "Personal".to_string(), None) {
+        warn!("Failed to create default workspace for user {}: {}", profile.id, e);
+    }
+
+    // Re-fetch the profile so the response reflects the newly-linked workspace.
+    let profile = user_service
+        .get_profile(&profile.id)?
+        .unwrap_or(profile);
 
     let access_token = create_access_token(&jwt_config, &profile.id)?;
     let raw_refresh = create_refresh_token();
@@ -164,6 +178,17 @@ async fn refresh(
     };
 
     Ok(HttpResponse::Ok().json(response))
+}
+
+async fn logout(
+    data: web::Json<RefreshRequest>,
+    cache: web::Data<Cache>,
+) -> Result<HttpResponse, AppError> {
+    let hash = hash_refresh_token(&data.refresh_token);
+    if let Err(e) = cache.delete_refresh_token(&hash) {
+        warn!("Failed to delete refresh token on logout: {}", e);
+    }
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true })))
 }
 
 async fn get_profile(

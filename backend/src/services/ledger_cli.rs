@@ -7,11 +7,24 @@ use crate::utils::validation::is_valid_username_char;
 pub struct LedgerCli;
 
 impl LedgerCli {
-    pub fn balance(ledger_path: &Path, pivot_user: bool) -> Result<String, AppError> {
+    pub fn balance(
+        ledger_path: &Path,
+        pivot_user: bool,
+        filter_user: Option<&str>,
+    ) -> Result<String, AppError> {
         let mut cmd = Command::new("ledger");
         cmd.arg("balance").arg("-f").arg(ledger_path);
         if pivot_user {
             cmd.arg("--pivot").arg("User");
+        }
+        if let Some(user) = filter_user {
+            if user.is_empty() || !user.chars().all(is_valid_username_char) {
+                return Err(AppError::BadRequest(
+                    "Invalid user filter: must contain only alphanumeric characters, hyphens, or underscores".to_string(),
+                ));
+            }
+            cmd.arg("--limit")
+                .arg(format!("tag('User') =~ /{}/", user));
         }
         Self::execute(cmd)
     }
@@ -19,6 +32,9 @@ impl LedgerCli {
     pub fn register(
         ledger_path: &Path,
         filter_user: Option<&str>,
+        filter_payee: Option<&str>,
+        begin: Option<&str>,
+        end: Option<&str>,
     ) -> Result<String, AppError> {
         let mut cmd = Command::new("ledger");
         cmd.arg("register").arg("-f").arg(ledger_path);
@@ -32,6 +48,27 @@ impl LedgerCli {
             }
             cmd.arg("--limit")
                 .arg(format!("tag('User') =~ /{}/", user));
+        }
+        if let Some(payee) = filter_payee {
+            // Accept only safe payee-search characters to prevent ledger
+            // value-expression injection via regex specials.
+            if payee.is_empty()
+                || !payee
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' || c == '.')
+            {
+                return Err(AppError::BadRequest(
+                    "Invalid payee filter: letters, digits, spaces, hyphens, underscores, or dots only".to_string(),
+                ));
+            }
+            cmd.arg("--limit")
+                .arg(format!("payee =~ /(?i){}/", payee));
+        }
+        if let Some(b) = begin {
+            cmd.arg("--begin").arg(b);
+        }
+        if let Some(e) = end {
+            cmd.arg("--end").arg(e);
         }
         Self::execute(cmd)
     }
@@ -101,11 +138,19 @@ impl LedgerCli {
 #[cfg(test)]
 impl LedgerCli {
     /// Builds the balance command without executing it — for test inspection.
-    fn build_balance_command(ledger_path: &Path, pivot_user: bool) -> Command {
+    fn build_balance_command(
+        ledger_path: &Path,
+        pivot_user: bool,
+        filter_user: Option<&str>,
+    ) -> Command {
         let mut cmd = Command::new("ledger");
         cmd.arg("balance").arg("-f").arg(ledger_path);
         if pivot_user {
             cmd.arg("--pivot").arg("User");
+        }
+        if let Some(user) = filter_user {
+            cmd.arg("--limit")
+                .arg(format!("tag('User') =~ /{}/", user));
         }
         cmd
     }
@@ -114,12 +159,25 @@ impl LedgerCli {
     fn build_register_command(
         ledger_path: &Path,
         filter_user: Option<&str>,
+        filter_payee: Option<&str>,
+        begin: Option<&str>,
+        end: Option<&str>,
     ) -> Command {
         let mut cmd = Command::new("ledger");
         cmd.arg("register").arg("-f").arg(ledger_path);
         if let Some(user) = filter_user {
             cmd.arg("--limit")
                 .arg(format!("tag('User') =~ /{}/", user));
+        }
+        if let Some(payee) = filter_payee {
+            cmd.arg("--limit")
+                .arg(format!("payee =~ /(?i){}/", payee));
+        }
+        if let Some(b) = begin {
+            cmd.arg("--begin").arg(b);
+        }
+        if let Some(e) = end {
+            cmd.arg("--end").arg(e);
         }
         cmd
     }
@@ -193,7 +251,7 @@ mod tests {
     #[test]
     fn test_balance_command_basic() {
         let path = PathBuf::from("/tmp/test.ledger");
-        let cmd = LedgerCli::build_balance_command(&path, false);
+        let cmd = LedgerCli::build_balance_command(&path, false, None);
         let args = get_args(&cmd);
         assert_eq!(args[0], "ledger");
         assert_eq!(args[1], "balance");
@@ -205,7 +263,7 @@ mod tests {
     #[test]
     fn test_balance_command_with_pivot() {
         let path = PathBuf::from("/tmp/test.ledger");
-        let cmd = LedgerCli::build_balance_command(&path, true);
+        let cmd = LedgerCli::build_balance_command(&path, true, None);
         let args = get_args(&cmd);
         assert_eq!(args[0], "ledger");
         assert_eq!(args[1], "balance");
@@ -219,7 +277,7 @@ mod tests {
     #[test]
     fn test_register_command_basic() {
         let path = PathBuf::from("/tmp/test.ledger");
-        let cmd = LedgerCli::build_register_command(&path, None);
+        let cmd = LedgerCli::build_register_command(&path, None, None, None, None);
         let args = get_args(&cmd);
         assert_eq!(args[0], "ledger");
         assert_eq!(args[1], "register");
@@ -231,7 +289,7 @@ mod tests {
     #[test]
     fn test_register_command_with_user_filter() {
         let path = PathBuf::from("/tmp/test.ledger");
-        let cmd = LedgerCli::build_register_command(&path, Some("alice"));
+        let cmd = LedgerCli::build_register_command(&path, Some("alice"), None, None, None);
         let args = get_args(&cmd);
         assert_eq!(args[0], "ledger");
         assert_eq!(args[1], "register");

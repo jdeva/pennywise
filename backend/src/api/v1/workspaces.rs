@@ -43,7 +43,7 @@ async fn create_workspace(
     }
 
     let workspace = ws_service.create_workspace(&user_id, data.name.trim().to_string(), data.currency.clone())?;
-    Ok(HttpResponse::Created().json(WorkspacePublic::from(workspace)))
+    Ok(HttpResponse::Created().json(ws_service.to_public(workspace)))
 }
 
 async fn list_workspaces(
@@ -56,7 +56,7 @@ async fn list_workspaces(
     let workspaces: Vec<WorkspacePublic> = ws_service
         .list_workspaces(&user_id)?
         .into_iter()
-        .map(WorkspacePublic::from)
+        .map(|w| ws_service.to_public(w))
         .collect();
 
     Ok(HttpResponse::Ok().json(workspaces))
@@ -74,7 +74,7 @@ async fn get_workspace(
         .map_err(|_| AppError::BadRequest("Invalid workspace ID".to_string()))?;
 
     let workspace = ws_service.get_workspace_authorized(&workspace_id, &user_id)?;
-    Ok(HttpResponse::Ok().json(WorkspacePublic::from(workspace)))
+    Ok(HttpResponse::Ok().json(ws_service.to_public(workspace)))
 }
 
 async fn update_workspace(
@@ -94,7 +94,7 @@ async fn update_workspace(
     }
 
     let workspace = ws_service.update_workspace(&workspace_id, &user_id, data.name.trim().to_string())?;
-    Ok(HttpResponse::Ok().json(WorkspacePublic::from(workspace)))
+    Ok(HttpResponse::Ok().json(ws_service.to_public(workspace)))
 }
 
 async fn deactivate_workspace(
@@ -132,7 +132,7 @@ async fn share_workspace(
     }
 
     let workspace = ws_service.share_workspace(&workspace_id, &user_id, data.username.trim(), data.permission.clone())?;
-    Ok(HttpResponse::Ok().json(WorkspacePublic::from(workspace)))
+    Ok(HttpResponse::Ok().json(ws_service.to_public(workspace)))
 }
 
 async fn unshare_workspace(
@@ -152,7 +152,7 @@ async fn unshare_workspace(
         .map_err(|_| AppError::BadRequest("Invalid user ID".to_string()))?;
 
     let workspace = ws_service.unshare_workspace(&workspace_id, &user_id, &target_user_id)?;
-    Ok(HttpResponse::Ok().json(WorkspacePublic::from(workspace)))
+    Ok(HttpResponse::Ok().json(ws_service.to_public(workspace)))
 }
 
 async fn post_transaction(
@@ -188,7 +188,8 @@ async fn query_balance(
         .map_err(|_| AppError::BadRequest("Invalid workspace ID".to_string()))?;
 
     let pivot_user = query.pivot_user.unwrap_or(false);
-    let response = tx_service.query_balance(&workspace_id, &user_id, pivot_user)?;
+    let filter_user = query.user.as_deref().filter(|s| !s.is_empty());
+    let response = tx_service.query_balance(&workspace_id, &user_id, pivot_user, filter_user)?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -204,10 +205,17 @@ async fn query_register(
     let workspace_id = uuid::Uuid::parse_str(&path.into_inner())
         .map_err(|_| AppError::BadRequest("Invalid workspace ID".to_string()))?;
 
+    let user_filter = query.user.as_deref().filter(|s| !s.is_empty());
+    let payee_filter = query.payee.as_deref().filter(|s| !s.is_empty());
+    let begin = query.begin.as_deref().filter(|s| !s.is_empty());
+    let end = query.end.as_deref().filter(|s| !s.is_empty());
     let response = tx_service.query_register(
         &workspace_id,
         &user_id,
-        query.user.as_deref(),
+        user_filter,
+        payee_filter,
+        begin,
+        end,
     )?;
     Ok(HttpResponse::Ok().json(response))
 }

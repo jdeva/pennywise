@@ -57,11 +57,15 @@ pub struct ListCategoriesQuery {
 #[derive(Debug, Clone, Deserialize)]
 pub struct RegisterQuery {
     pub user: Option<String>,
+    pub payee: Option<String>,
+    pub begin: Option<String>,
+    pub end: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct BalanceQuery {
     pub pivot_user: Option<bool>,
+    pub user: Option<String>,
 }
 
 // Response DTOs

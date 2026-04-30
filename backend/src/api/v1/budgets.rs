@@ -40,7 +40,7 @@ async fn set_budgeting(
         .map_err(|_| AppError::BadRequest("Invalid workspace ID".to_string()))?;
 
     let workspace = ws_service.set_budgeting_enabled(&workspace_id, &user_id, data.enabled)?;
-    Ok(HttpResponse::Ok().json(WorkspacePublic::from(workspace)))
+    Ok(HttpResponse::Ok().json(ws_service.to_public(workspace)))
 }
 
 async fn get_budgeting(

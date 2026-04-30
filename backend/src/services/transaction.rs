@@ -418,11 +418,12 @@ impl TransactionService {
         workspace_id: &Uuid,
         user_id: &Uuid,
         pivot_user: bool,
+        filter_user: Option<&str>,
     ) -> Result<BalanceResponse, AppError> {
         let workspace = self.workspace_service
             .get_workspace_authorized(workspace_id, user_id)?;
         let ledger_path = self.file_store.get_workspace_ledger_path(&workspace);
-        let output = LedgerCli::balance(&ledger_path, pivot_user)?;
+        let output = LedgerCli::balance(&ledger_path, pivot_user, filter_user)?;
         Ok(BalanceResponse { output })
     }
 
@@ -431,11 +432,14 @@ impl TransactionService {
         workspace_id: &Uuid,
         user_id: &Uuid,
         filter_user: Option<&str>,
+        filter_payee: Option<&str>,
+        begin: Option<&str>,
+        end: Option<&str>,
     ) -> Result<RegisterResponse, AppError> {
         let workspace = self.workspace_service
             .get_workspace_authorized(workspace_id, user_id)?;
         let ledger_path = self.file_store.get_workspace_ledger_path(&workspace);
-        let output = LedgerCli::register(&ledger_path, filter_user)?;
+        let output = LedgerCli::register(&ledger_path, filter_user, filter_payee, begin, end)?;
         Ok(RegisterResponse { output })
     }
 
@@ -1183,44 +1187,44 @@ mod tests {
             // --- Balance queries ---
 
             // Owner can query balance — should NOT get NotFound
-            let owner_bal = service.query_balance(&account.id, &owner.id, pivot_user);
+            let owner_bal = service.query_balance(&account.id, &owner.id, pivot_user, None);
             prop_assert!(!matches!(owner_bal, Err(AppError::NotFound(_))),
                 "Owner balance query should not return NotFound, got: {:?}", owner_bal);
 
             // Write user can query balance — should NOT get NotFound
-            let write_bal = service.query_balance(&account.id, &write_user.id, pivot_user);
+            let write_bal = service.query_balance(&account.id, &write_user.id, pivot_user, None);
             prop_assert!(!matches!(write_bal, Err(AppError::NotFound(_))),
                 "Write user balance query should not return NotFound, got: {:?}", write_bal);
 
             // Read user can query balance — should NOT get NotFound
-            let read_bal = service.query_balance(&account.id, &read_user.id, pivot_user);
+            let read_bal = service.query_balance(&account.id, &read_user.id, pivot_user, None);
             prop_assert!(!matches!(read_bal, Err(AppError::NotFound(_))),
                 "Read user balance query should not return NotFound, got: {:?}", read_bal);
 
             // No-access user should get NotFound for balance
-            let no_access_bal = service.query_balance(&account.id, &no_access_user.id, pivot_user);
+            let no_access_bal = service.query_balance(&account.id, &no_access_user.id, pivot_user, None);
             prop_assert!(matches!(no_access_bal, Err(AppError::NotFound(_))),
                 "No-access user balance query should return NotFound, got: {:?}", no_access_bal);
 
             // --- Register queries ---
 
             // Owner can query register — should NOT get NotFound
-            let owner_reg = service.query_register(&account.id, &owner.id, filter_user.as_deref());
+            let owner_reg = service.query_register(&account.id, &owner.id, filter_user.as_deref(), None, None, None);
             prop_assert!(!matches!(owner_reg, Err(AppError::NotFound(_))),
                 "Owner register query should not return NotFound, got: {:?}", owner_reg);
 
             // Write user can query register — should NOT get NotFound
-            let write_reg = service.query_register(&account.id, &write_user.id, filter_user.as_deref());
+            let write_reg = service.query_register(&account.id, &write_user.id, filter_user.as_deref(), None, None, None);
             prop_assert!(!matches!(write_reg, Err(AppError::NotFound(_))),
                 "Write user register query should not return NotFound, got: {:?}", write_reg);
 
             // Read user can query register — should NOT get NotFound
-            let read_reg = service.query_register(&account.id, &read_user.id, filter_user.as_deref());
+            let read_reg = service.query_register(&account.id, &read_user.id, filter_user.as_deref(), None, None, None);
             prop_assert!(!matches!(read_reg, Err(AppError::NotFound(_))),
                 "Read user register query should not return NotFound, got: {:?}", read_reg);
 
             // No-access user should get NotFound for register
-            let no_access_reg = service.query_register(&account.id, &no_access_user.id, filter_user.as_deref());
+            let no_access_reg = service.query_register(&account.id, &no_access_user.id, filter_user.as_deref(), None, None, None);
             prop_assert!(matches!(no_access_reg, Err(AppError::NotFound(_))),
                 "No-access user register query should return NotFound, got: {:?}", no_access_reg);
         }

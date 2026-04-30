@@ -61,6 +61,75 @@ Depends on (2) shipping first.
 - Commit in logical chunks, push to origin/main via gh
 - Update `docs/QA_LOG.md` if any bugs surface
 
+## Playwright E2E protocol
+
+Use these exact steps to verify after any UI/feature change. Do **not** skip.
+The MCP screenshot tool occasionally returns stale images — always cross-check
+with live DOM via `browser_evaluate` before declaring a failure.
+
+### Setup
+1. Make sure the stack is running: `finch compose ps` — all 4 containers must
+   show `running`.
+2. Rebuild the service you changed, then force-recreate the container:
+   ```
+   finch compose up -d --build frontend
+   finch compose up -d --force-recreate frontend
+   sleep 3
+   ```
+   (Swap `frontend` for `backend` if backend changed. Both if both changed.)
+3. Close any existing Playwright tabs: `browser_close`.
+
+### Desktop pass (1440×900)
+1. `browser_resize` width=1440 height=900
+2. `browser_navigate` http://localhost:5173/sign-in
+3. `browser_wait_for` 1.5s
+4. `browser_fill_form` #username=uitest2 #password=TestPass123
+5. `browser_click` button[type=submit]
+6. `browser_wait_for` 2.5s
+7. For **every** page you touched: navigate, wait 2s, take a viewport
+   screenshot (NOT fullPage — viewport is more reliable), call
+   `browser_evaluate` to pull the key DOM facts, call
+   `browser_console_messages` level=error.
+8. Test the primary interaction (open sheet, click filter, switch lair, etc.)
+   via `browser_evaluate` rather than `browser_click` where possible — click
+   selectors can trip on Radix portals.
+
+### Mobile pass (390×844)
+1. `browser_resize` width=390 height=844
+2. `browser_navigate` http://localhost:5173/ (already signed in from desktop pass)
+3. For each page, verify via `browser_evaluate`:
+   - `window.innerWidth === 390`
+   - `getComputedStyle(document.querySelector('aside')).display === 'none'`
+   - `!!document.querySelector('nav.fixed')` (bottom nav present)
+   - `document.documentElement.scrollWidth <= window.innerWidth + 1` (no
+     horizontal scroll)
+   - `document.querySelectorAll('section > ul > li').length > 0` (content
+     rendered, not just the shell)
+4. Open the filters sheet: click the "Filters" button → assert
+   `!!document.querySelector('[role=dialog]')` and the filter inputs render
+   inside it.
+5. Check console is clean: `browser_console_messages` level=error must return 0.
+
+### Known quirks
+- `browser_take_screenshot` fullPage can return stale images after navigation.
+  Prefer viewport screenshots, and never judge a failure from a screenshot
+  alone — `browser_evaluate` is authoritative.
+- On stale-bundle errors (404 on /assets/*.js) the browser tab cached an old
+  index.html. Bust with a query-string reload: `window.location.replace(url + '?v=' + Date.now())`.
+- Radix tab triggers don't respond to programmatic `.click()` from evaluate;
+  use `browser_click` with a CSS selector.
+- `browser_fill_form` can silently fail if the input was re-rendered — verify
+  with a follow-up `browser_evaluate` checking the input's `.value`.
+
+### Data
+Test users already exist on the running stack:
+- `uitest2` / `TestPass123` (owner of lair "Home")
+- `mate1` / `TestPass123` (shared into "Home" with write permission)
+
+If the stack was wiped, re-register via `POST /api/v1/auth/register` then
+use curl to seed a few transactions (see the session transcript or
+`docs/QA_LOG.md` for the API shape).
+
 ## Context pointers for next session
 
 - Memory files in `~/.claude/projects/-Users-jdevv-Documents-workspace-pennywise/memory/`

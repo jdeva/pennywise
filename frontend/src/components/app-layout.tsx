@@ -2,29 +2,40 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { useAuth } from '@/context/auth-context'
 import { useTheme } from '@/context/theme-context'
 import { WorkspacePicker } from '@/components/workspace-picker'
+import { useAdvancedMode } from '@/lib/use-advanced-mode'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard,
   ArrowLeftRight,
   PiggyBank,
   Settings,
+  FileCode2,
   LogOut,
   Sun,
   Moon,
 } from 'lucide-react'
 
-const navItems = [
+const baseNavItems = [
   { to: '/' as const, label: 'Dashboard', icon: LayoutDashboard },
   { to: '/transactions' as const, label: 'Transactions', icon: ArrowLeftRight },
   { to: '/budgets' as const, label: 'Budgets', icon: PiggyBank },
   { to: '/settings' as const, label: 'Settings', icon: Settings },
 ]
 
+const ledgerFilesItem = {
+  to: '/ledger-files' as const,
+  label: 'Ledger files',
+  icon: FileCode2,
+}
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth()
   const { theme, setTheme } = useTheme()
+  const [advanced] = useAdvancedMode()
   const router = useRouterState()
   const currentPath = router.location.pathname
+
+  const navItems = advanced ? [...baseNavItems, ledgerFilesItem] : baseNavItems
 
   const isActive = (to: string) => (to === '/' ? currentPath === '/' : currentPath.startsWith(to))
 

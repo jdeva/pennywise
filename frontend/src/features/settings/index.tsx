@@ -13,6 +13,7 @@ import { AccountTree } from './account-tree'
 import { WorkspacesTab } from './workspaces'
 import { UsersTab } from './users-tab'
 import { SeedPicker } from './seed-picker'
+import { AdvancedPanel } from './advanced-panel'
 
 const profileSchema = z.object({
   username: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/),
@@ -115,6 +116,8 @@ export function SettingsPage() {
             </Card>
 
             <SeedPicker />
+
+            <AdvancedPanel />
 
             <Card>
               <CardHeader><CardTitle>Change Password</CardTitle></CardHeader>

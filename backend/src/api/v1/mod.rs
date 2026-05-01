@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod budgets;
 pub mod chart_of_accounts;
+pub mod ledger_files;
 pub mod workspaces;
 pub mod transactions;
 pub mod users;
@@ -24,6 +25,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .configure(workspaces::workspaces_config)
             .configure(transactions::transactions_config)
             .configure(chart_of_accounts::chart_of_accounts_config)
-            .configure(budgets::budgets_config),
+            .configure(budgets::budgets_config)
+            .configure(ledger_files::ledger_files_config),
     );
 }

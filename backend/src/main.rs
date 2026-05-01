@@ -33,7 +33,7 @@ async fn main() -> std::io::Result<()> {
         86400,
     );
     let budget_service = BudgetService::new(
-        file_store,
+        file_store.clone(),
         cache.clone(),
         workspace_service.clone(),
         86400,
@@ -46,6 +46,7 @@ async fn main() -> std::io::Result<()> {
 
     let jwt_data = web::Data::new(jwt_config);
     let cache_data = web::Data::new(cache);
+    let file_store_data = web::Data::new(file_store);
     let user_service_data = web::Data::new(user_service);
     let workspace_service_data = web::Data::new(workspace_service);
     let transaction_service_data = web::Data::new(transaction_service);
@@ -60,6 +61,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(middleware::AuthMiddleware)
             .app_data(jwt_data.clone())
             .app_data(cache_data.clone())
+            .app_data(file_store_data.clone())
             .app_data(user_service_data.clone())
             .app_data(workspace_service_data.clone())
             .app_data(transaction_service_data.clone())

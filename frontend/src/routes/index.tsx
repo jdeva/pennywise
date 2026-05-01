@@ -11,6 +11,7 @@ import { DashboardPage } from '@/features/dashboard'
 import { TransactionsPage } from '@/features/transactions'
 import { BudgetsPage } from '@/features/budgets'
 import { SettingsPage } from '@/features/settings'
+import { LedgerFilesPage } from '@/features/ledger-files'
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
@@ -71,6 +72,12 @@ const settingsRoute = createRoute({
   component: SettingsPage,
 })
 
+const ledgerFilesRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/ledger-files',
+  component: LedgerFilesPage,
+})
+
 export const routeTree = rootRoute.addChildren([
   signInRoute,
   signUpRoute,
@@ -79,5 +86,6 @@ export const routeTree = rootRoute.addChildren([
     transactionsRoute,
     budgetsRoute,
     settingsRoute,
+    ledgerFilesRoute,
   ]),
 ])

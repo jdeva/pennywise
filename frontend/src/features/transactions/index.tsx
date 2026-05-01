@@ -4,6 +4,7 @@ import { useWorkspace } from '@/context/workspace-context'
 import { useAuth } from '@/context/auth-context'
 import { TransactionForm } from './transaction-form'
 import { RegisterView, type RegisterFilters } from './register-view'
+import type { TransactionEntry } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -22,6 +23,7 @@ export function TransactionsPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [formOpen, setFormOpen] = useState(false)
+  const [editing, setEditing] = useState<TransactionEntry | null>(null)
   const [filterOpen, setFilterOpen] = useState(false)
 
   const [payee, setPayee] = useState('')
@@ -61,7 +63,19 @@ export function TransactionsPage() {
   const handleSuccess = () => {
     queryClient.invalidateQueries({ queryKey: ['register', activeWorkspace?.id] })
     queryClient.invalidateQueries({ queryKey: ['balance', activeWorkspace?.id] })
+    queryClient.invalidateQueries({ queryKey: ['transactions', activeWorkspace?.id] })
     setFormOpen(false)
+    setEditing(null)
+  }
+
+  const handleEdit = (tx: TransactionEntry) => {
+    setEditing(tx)
+    setFormOpen(true)
+  }
+
+  const handleNew = () => {
+    setEditing(null)
+    setFormOpen(true)
   }
 
   if (!activeWorkspace) {
@@ -120,7 +134,7 @@ export function TransactionsPage() {
     <div className="space-y-5">
       <div className="flex items-end justify-between gap-3">
         <h1 className="font-display text-3xl font-semibold tracking-tight">Transactions</h1>
-        <Button onClick={() => setFormOpen(true)} className="gap-1.5">
+        <Button onClick={handleNew} className="gap-1.5">
           <Plus className="h-4 w-4" /> <span className="hidden sm:inline">New transaction</span><span className="sm:hidden">New</span>
         </Button>
       </div>
@@ -160,16 +174,36 @@ export function TransactionsPage() {
         )}
       </div>
 
-      <RegisterView filters={filters} />
+      <RegisterView filters={filters} onEdit={handleEdit} />
 
-      <Sheet open={formOpen} onOpenChange={setFormOpen}>
+      <Sheet
+        open={formOpen}
+        onOpenChange={(open) => {
+          setFormOpen(open)
+          if (!open) setEditing(null)
+        }}
+      >
         <SheetContent side="right">
           <SheetHeader>
-            <SheetTitle>New transaction</SheetTitle>
-            <SheetDescription>Record an expense, income, or transfer.</SheetDescription>
+            <SheetTitle>{editing ? 'Edit transaction' : 'New transaction'}</SheetTitle>
+            <SheetDescription>
+              {editing
+                ? 'Adjust any field — history stays intact.'
+                : 'Record an expense, income, or transfer.'}
+            </SheetDescription>
           </SheetHeader>
           <SheetBody>
-            <TransactionForm onSuccess={handleSuccess} onCancel={() => setFormOpen(false)} />
+            {/* Key on the editing id so the form resets its defaultValues
+                cleanly when switching between new/edit targets. */}
+            <TransactionForm
+              key={editing?.id ?? 'new'}
+              editing={editing}
+              onSuccess={handleSuccess}
+              onCancel={() => {
+                setFormOpen(false)
+                setEditing(null)
+              }}
+            />
           </SheetBody>
         </SheetContent>
       </Sheet>

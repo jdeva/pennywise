@@ -9,12 +9,32 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { transactionSchema, type TransactionForm } from '@/lib/schemas'
+import type { TransactionEntry } from '@/lib/types'
 
 type TxType = 'expense' | 'income' | 'transfer'
 
 interface Props {
   onSuccess: () => void
   onCancel?: () => void
+  /** If set, the form edits an existing transaction instead of posting a new one. */
+  editing?: TransactionEntry | null
+}
+
+/** Strip `$`/commas from an API amount string like `"-$1,234.50"` → `"1234.50"`. */
+function toPositiveDecimal(raw: string | undefined): string {
+  if (!raw) return ''
+  const cleaned = raw.replace(/[^0-9.-]/g, '')
+  const n = Number(cleaned)
+  if (!Number.isFinite(n)) return ''
+  return Math.abs(n).toFixed(2)
+}
+
+function detectTxType(debit: string, credit: string): TxType {
+  const d = debit.toLowerCase()
+  const c = credit.toLowerCase()
+  if (d.startsWith('expenses:')) return 'expense'
+  if (c.startsWith('income:')) return 'income'
+  return 'transfer'
 }
 
 // Account type prefixes for filtering
@@ -36,10 +56,20 @@ const TX_TYPE_LABELS: { value: TxType; label: string }[] = [
   { value: 'transfer', label: 'Transfer' },
 ]
 
-export function TransactionForm({ onSuccess, onCancel }: Props) {
+export function TransactionForm({ onSuccess, onCancel, editing }: Props) {
   const { activeWorkspace } = useWorkspace()
   const [error, setError] = useState<string | null>(null)
-  const [txType, setTxType] = useState<TxType>('expense')
+  const initialDebit = editing?.postings?.find((p) => !p.amount.trim().startsWith('-'))?.account
+    ?? editing?.postings?.[0]?.account
+    ?? ''
+  const initialCredit = editing?.postings?.find((p) => p.account !== initialDebit)?.account ?? ''
+  const initialAmount = toPositiveDecimal(
+    editing?.postings?.find((p) => !p.amount.trim().startsWith('-'))?.amount
+      ?? editing?.postings?.[0]?.amount,
+  )
+  const [txType, setTxType] = useState<TxType>(
+    editing ? detectTxType(initialDebit, initialCredit) : 'expense',
+  )
   const [debitFilter, setDebitFilter] = useState('')
   const [creditFilter, setCreditFilter] = useState('')
   const [showDebitSuggestions, setShowDebitSuggestions] = useState(false)
@@ -70,8 +100,11 @@ export function TransactionForm({ onSuccess, onCancel }: Props) {
   } = useForm<TransactionForm>({
     resolver: zodResolver(transactionSchema),
     defaultValues: {
-      date: new Date().toISOString().slice(0, 10),
-      payee: '', debit_account: '', credit_account: '', amount: '',
+      date: editing?.date || new Date().toISOString().slice(0, 10),
+      payee: editing?.payee ?? '',
+      debit_account: initialDebit,
+      credit_account: initialCredit,
+      amount: initialAmount,
     },
   })
 
@@ -113,11 +146,15 @@ export function TransactionForm({ onSuccess, onCancel }: Props) {
     if (!activeWorkspace) return
     setError(null)
     try {
-      await transactionsApi.post(activeWorkspace.id, data)
+      if (editing?.id) {
+        await transactionsApi.update(activeWorkspace.id, editing.id, data)
+      } else {
+        await transactionsApi.post(activeWorkspace.id, data)
+      }
       reset()
       onSuccess()
     } catch (err: any) {
-      setError(err?.response?.data?.error || err?.error || 'Failed to post transaction')
+      setError(err?.response?.data?.error || err?.error || 'Failed to save transaction')
     }
   }
 
@@ -239,7 +276,13 @@ export function TransactionForm({ onSuccess, onCancel }: Props) {
           </Button>
         )}
         <Button type="submit" disabled={isSubmitting || !activeWorkspace}>
-          {isSubmitting ? 'Posting…' : 'Post transaction'}
+          {isSubmitting
+            ? editing
+              ? 'Saving…'
+              : 'Posting…'
+            : editing
+            ? 'Save changes'
+            : 'Post transaction'}
         </Button>
       </div>
     </form>

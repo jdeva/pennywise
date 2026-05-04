@@ -65,6 +65,10 @@ pub struct Workspace {
     /// Whether budgeting features are enabled for this workspace
     #[serde(default)]
     pub budgeting_enabled: bool,
+    /// Material You seed colour (`#RRGGBB`) — drives the per-lair palette.
+    /// None falls back to the app default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -120,6 +124,9 @@ pub struct WorkspacePublic {
     /// Whether budgeting features are enabled for this workspace
     #[serde(default)]
     pub budgeting_enabled: bool,
+    /// Material You seed colour (`#RRGGBB`) — drives the per-lair palette.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed_color: Option<String>,
 }
 
 impl From<Workspace> for WorkspacePublic {
@@ -145,6 +152,7 @@ impl From<Workspace> for WorkspacePublic {
             ledger_dir: a.ledger_dir,
             rotation_period: a.rotation_period,
             budgeting_enabled: a.budgeting_enabled,
+            seed_color: a.seed_color,
         }
     }
 }
@@ -154,11 +162,13 @@ impl From<Workspace> for WorkspacePublic {
 pub struct CreateWorkspaceRequest {
     pub name: String,
     pub currency: Option<String>,
+    pub seed_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct UpdateWorkspaceRequest {
     pub name: String,
+    pub seed_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

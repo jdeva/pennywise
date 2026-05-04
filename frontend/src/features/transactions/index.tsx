@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { useWorkspace } from '@/context/workspace-context'
 import { useAuth } from '@/context/auth-context'
-import { TransactionForm } from './transaction-form'
+import { useDateRange } from '@/context/date-range-context'
+import { useTxForm } from '@/context/tx-form-context'
 import { RegisterView, type RegisterFilters } from './register-view'
-import type { TransactionEntry } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,20 +15,24 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet'
-import { Plus, X, SlidersHorizontal } from 'lucide-react'
+import { Search, SlidersHorizontal, X, Calendar, UserRound } from 'lucide-react'
 
 export function TransactionsPage() {
   const { activeWorkspace } = useWorkspace()
   const { user } = useAuth()
-  const queryClient = useQueryClient()
-  const [formOpen, setFormOpen] = useState(false)
-  const [editing, setEditing] = useState<TransactionEntry | null>(null)
+  const { range } = useDateRange()
+  const { openForEdit } = useTxForm()
   const [filterOpen, setFilterOpen] = useState(false)
 
   const [payee, setPayee] = useState('')
   const [filterUser, setFilterUser] = useState('')
-  const [begin, setBegin] = useState('')
-  const [end, setEnd] = useState('')
+  // begin/end default to the global date range but can be overridden here
+  const [begin, setBegin] = useState<string | null>(null)
+  const [end, setEnd] = useState<string | null>(null)
+
+  const effectiveBegin = begin ?? range.begin
+  const effectiveEnd = end ?? range.end
+  const usingGlobalRange = begin === null && end === null
 
   const members = useMemo(() => {
     if (!activeWorkspace || !user) return [] as string[]
@@ -45,37 +48,25 @@ export function TransactionsPage() {
     () => ({
       payee: payee.trim() || undefined,
       user: filterUser || undefined,
-      begin: begin || undefined,
-      end: end || undefined,
+      begin: effectiveBegin || undefined,
+      end: effectiveEnd || undefined,
     }),
-    [payee, filterUser, begin, end],
+    [payee, filterUser, effectiveBegin, effectiveEnd],
   )
 
-  const activeFilterCount = Object.values(filters).filter(Boolean).length
+  // Count user-controlled filters beyond the inherited date range.
+  const activeCustomCount =
+    (payee.trim() ? 1 : 0) + (filterUser ? 1 : 0) + (!usingGlobalRange ? 1 : 0)
+
+  const resetDateRange = () => {
+    setBegin(null)
+    setEnd(null)
+  }
 
   const clearFilters = () => {
     setPayee('')
     setFilterUser('')
-    setBegin('')
-    setEnd('')
-  }
-
-  const handleSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: ['register', activeWorkspace?.id] })
-    queryClient.invalidateQueries({ queryKey: ['balance', activeWorkspace?.id] })
-    queryClient.invalidateQueries({ queryKey: ['transactions', activeWorkspace?.id] })
-    setFormOpen(false)
-    setEditing(null)
-  }
-
-  const handleEdit = (tx: TransactionEntry) => {
-    setEditing(tx)
-    setFormOpen(true)
-  }
-
-  const handleNew = () => {
-    setEditing(null)
-    setFormOpen(true)
+    resetDateRange()
   }
 
   if (!activeWorkspace) {
@@ -89,124 +80,105 @@ export function TransactionsPage() {
     )
   }
 
-  const fieldsBlock = (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <div className="space-y-1">
-        <Label htmlFor="f-payee" className="text-xs">Payee</Label>
-        <Input
-          id="f-payee"
-          value={payee}
-          onChange={(e) => setPayee(e.target.value)}
-          placeholder="Search…"
-        />
-      </div>
-      {members.length > 1 && (
-        <div className="space-y-1">
-          <Label htmlFor="f-user" className="text-xs">Posted by</Label>
-          <select
-            id="f-user"
-            value={filterUser}
-            onChange={(e) => setFilterUser(e.target.value)}
-            className="flex h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="">Anyone</option>
-            {members.map((m) => (
-              <option key={m} value={m}>
-                {m}
-                {m === user?.username ? ' (you)' : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-      <div className="space-y-1">
-        <Label htmlFor="f-begin" className="text-xs">From</Label>
-        <Input id="f-begin" type="date" value={begin} onChange={(e) => setBegin(e.target.value)} />
-      </div>
-      <div className="space-y-1">
-        <Label htmlFor="f-end" className="text-xs">To</Label>
-        <Input id="f-end" type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
-      </div>
-    </div>
-  )
+  const formatShortDate = (iso: string) => {
+    const [y, m, d] = iso.split('-')
+    return `${d}/${m}/${y.slice(2)}`
+  }
+
+  // Chip shown below the search bar. Each one is tappable to remove or edit.
+  const chips: Array<{ key: string; icon?: React.ReactNode; label: string; onRemove?: () => void }> = []
+  chips.push({
+    key: 'range',
+    icon: <Calendar className="h-3 w-3" />,
+    label: usingGlobalRange
+      ? 'This range'
+      : `${formatShortDate(effectiveBegin)} – ${formatShortDate(effectiveEnd)}`,
+    onRemove: usingGlobalRange ? undefined : resetDateRange,
+  })
+  if (payee.trim()) {
+    chips.push({
+      key: 'payee',
+      icon: <Search className="h-3 w-3" />,
+      label: `"${payee.trim()}"`,
+      onRemove: () => setPayee(''),
+    })
+  }
+  if (filterUser) {
+    chips.push({
+      key: 'user',
+      icon: <UserRound className="h-3 w-3" />,
+      label: filterUser,
+      onRemove: () => setFilterUser(''),
+    })
+  }
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between gap-3">
+      <div>
         <h1 className="font-display text-3xl font-semibold tracking-tight">Transactions</h1>
-        <Button onClick={handleNew} className="gap-1.5">
-          <Plus className="h-4 w-4" /> <span className="hidden sm:inline">New transaction</span><span className="sm:hidden">New</span>
-        </Button>
+        <p className="text-sm text-muted-foreground">All the comings and goings in your lair.</p>
       </div>
 
-      {/* Desktop: inline filters */}
-      <div className="hidden md:block">
-        {fieldsBlock}
-        {activeFilterCount > 0 && (
-          <div className="mt-3 flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1.5">
-              <X className="h-3.5 w-3.5" /> Clear filters
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* Mobile: single Filters button */}
-      <div className="flex gap-2 md:hidden">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setFilterOpen(true)}
-          className="gap-1.5"
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          Filters
-          {activeFilterCount > 0 && (
-            <span className="rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground">
-              {activeFilterCount}
-            </span>
-          )}
-        </Button>
-        {activeFilterCount > 0 && (
-          <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1">
-            <X className="h-3.5 w-3.5" /> Clear
-          </Button>
-        )}
-      </div>
-
-      <RegisterView filters={filters} onEdit={handleEdit} />
-
-      <Sheet
-        open={formOpen}
-        onOpenChange={(open) => {
-          setFormOpen(open)
-          if (!open) setEditing(null)
-        }}
-      >
-        <SheetContent side="right">
-          <SheetHeader>
-            <SheetTitle>{editing ? 'Edit transaction' : 'New transaction'}</SheetTitle>
-            <SheetDescription>
-              {editing
-                ? 'Adjust any field — history stays intact.'
-                : 'Record an expense, income, or transfer.'}
-            </SheetDescription>
-          </SheetHeader>
-          <SheetBody>
-            {/* Key on the editing id so the form resets its defaultValues
-                cleanly when switching between new/edit targets. */}
-            <TransactionForm
-              key={editing?.id ?? 'new'}
-              editing={editing}
-              onSuccess={handleSuccess}
-              onCancel={() => {
-                setFormOpen(false)
-                setEditing(null)
-              }}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={payee}
+              onChange={(e) => setPayee(e.target.value)}
+              placeholder="Search payees…"
+              className="pl-9"
+              aria-label="Search payees"
             />
-          </SheetBody>
-        </SheetContent>
-      </Sheet>
+            {payee && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => setPayee('')}
+                className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => setFilterOpen(true)}
+            className="shrink-0 gap-1.5"
+            aria-label="Open filters"
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            <span className="hidden sm:inline">Filters</span>
+            {activeCustomCount > 0 && (
+              <span className="rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground">
+                {activeCustomCount}
+              </span>
+            )}
+          </Button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {chips.map((c) => (
+            <FilterChip
+              key={c.key}
+              icon={c.icon}
+              label={c.label}
+              onRemove={c.onRemove}
+            />
+          ))}
+          {activeCustomCount > 0 && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+      </div>
+
+      <RegisterView filters={filters} onEdit={openForEdit} />
 
       <Sheet open={filterOpen} onOpenChange={setFilterOpen}>
         <SheetContent side="right">
@@ -214,9 +186,101 @@ export function TransactionsPage() {
             <SheetTitle>Filters</SheetTitle>
             <SheetDescription>Narrow down the register.</SheetDescription>
           </SheetHeader>
-          <SheetBody>{fieldsBlock}</SheetBody>
+          <SheetBody>
+            <div className="space-y-4">
+              {members.length > 1 && (
+                <div className="space-y-1">
+                  <Label htmlFor="f-user" className="text-xs">Posted by</Label>
+                  <select
+                    id="f-user"
+                    value={filterUser}
+                    onChange={(e) => setFilterUser(e.target.value)}
+                    className="flex h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="">Anyone</option>
+                    {members.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                        {m === user?.username ? ' (you)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Date range override</Label>
+                  {!usingGlobalRange && (
+                    <button
+                      type="button"
+                      onClick={resetDateRange}
+                      className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                    >
+                      Use lair default
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="f-begin" className="text-[11px] text-muted-foreground">
+                      From
+                    </Label>
+                    <Input
+                      id="f-begin"
+                      type="date"
+                      value={begin ?? range.begin}
+                      onChange={(e) => setBegin(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="f-end" className="text-[11px] text-muted-foreground">
+                      To
+                    </Label>
+                    <Input
+                      id="f-end"
+                      type="date"
+                      value={end ?? range.end}
+                      onChange={(e) => setEnd(e.target.value)}
+                    />
+                  </div>
+                </div>
+                {usingGlobalRange && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Inheriting the lair's <span className="font-medium text-foreground">{formatShortDate(range.begin)} – {formatShortDate(range.end)}</span>. Change either date to override.
+                  </p>
+                )}
+              </div>
+            </div>
+          </SheetBody>
         </SheetContent>
       </Sheet>
     </div>
+  )
+}
+
+function FilterChip({
+  icon,
+  label,
+  onRemove,
+}: {
+  icon?: React.ReactNode
+  label: string
+  onRemove?: () => void
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs font-medium text-foreground">
+      {icon && <span className="text-muted-foreground">{icon}</span>}
+      <span className="truncate max-w-[12rem]">{label}</span>
+      {onRemove && (
+        <button
+          type="button"
+          aria-label={`Remove ${label}`}
+          onClick={onRemove}
+          className="-mr-1 flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:bg-border hover:text-foreground"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </span>
   )
 }

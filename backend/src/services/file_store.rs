@@ -800,6 +800,31 @@ impl FileStore {
         self.atomic_write(&target, content.as_bytes(), None)
     }
 
+    /// Path to the recurring-transactions file for a workspace.
+    pub fn get_recurring_file_path(&self, workspace: &Workspace) -> PathBuf {
+        Path::new(&self.data_path)
+            .join("workspaces")
+            .join(format!("workspace-{}", workspace.id))
+            .join(format!("workspace-{}-recurring.ledger", workspace.id))
+    }
+
+    pub fn read_recurring_file(&self, workspace: &Workspace) -> Result<Option<String>, AppError> {
+        let path = self.get_recurring_file_path(workspace);
+        match fs::read_to_string(&path) {
+            Ok(contents) => Ok(Some(contents)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(AppError::Internal(format!(
+                "Failed to read recurring file {:?}: {}",
+                path, e
+            ))),
+        }
+    }
+
+    pub fn write_recurring_file(&self, workspace: &Workspace, content: &str) -> Result<(), AppError> {
+        let target = self.get_recurring_file_path(workspace);
+        self.atomic_write(&target, content.as_bytes(), None)
+    }
+
 
     pub fn has_any_users(&self) -> Result<bool, AppError> {
         let users_dir = Path::new(&self.data_path).join("users");
@@ -1155,6 +1180,7 @@ mod tests {
             ledger_dir: None,
             rotation_period: RotationPeriod::default(),
             budgeting_enabled: false,
+            seed_color: None,
         }
     }
 

@@ -30,6 +30,11 @@ pub fn workspaces_config(cfg: &mut web::ServiceConfig) {
             .route("/{id}/balance", web::get().to(query_balance))
             .route("/{id}/register", web::get().to(query_register))
             .route("/{id}/initialize", web::post().to(post_opening_balance))
+            .route("/{id}/recurring", web::post().to(crate::api::v1::recurring::create))
+            .route("/{id}/recurring", web::get().to(crate::api::v1::recurring::list))
+            .route("/{id}/recurring/forecast", web::get().to(crate::api::v1::recurring::forecast))
+            .route("/{id}/recurring/{index}", web::put().to(crate::api::v1::recurring::update))
+            .route("/{id}/recurring/{index}", web::delete().to(crate::api::v1::recurring::delete))
             .configure(crate::api::v1::budgets::budgets_routes),
     );
 }
@@ -46,7 +51,12 @@ async fn create_workspace(
         return Err(AppError::Validation(details));
     }
 
-    let workspace = ws_service.create_workspace(&user_id, data.name.trim().to_string(), data.currency.clone())?;
+    let workspace = ws_service.create_workspace(
+        &user_id,
+        data.name.trim().to_string(),
+        data.currency.clone(),
+        data.seed_color.clone(),
+    )?;
     Ok(HttpResponse::Created().json(ws_service.to_public(workspace)))
 }
 
@@ -97,7 +107,14 @@ async fn update_workspace(
         return Err(AppError::Validation(details));
     }
 
-    let workspace = ws_service.update_workspace(&workspace_id, &user_id, data.name.trim().to_string())?;
+    // Pass Some(...) to let callers explicitly set or clear seed_color; we
+    // treat the request shape as "always sent" for update.
+    let workspace = ws_service.update_workspace(
+        &workspace_id,
+        &user_id,
+        data.name.trim().to_string(),
+        Some(data.seed_color.clone()),
+    )?;
     Ok(HttpResponse::Ok().json(ws_service.to_public(workspace)))
 }
 

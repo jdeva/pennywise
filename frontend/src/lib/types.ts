@@ -23,6 +23,8 @@ export interface WorkspacePublic {
   ledger_dir: string | null
   rotation_period: 'quarterly' | 'semiannual' | 'yearly'
   budgeting_enabled: boolean
+  /** Material You seed colour (`#RRGGBB`) — drives per-lair palette. Optional; falls back to app default. */
+  seed_color?: string | null
 }
 
 export interface SharedUser {

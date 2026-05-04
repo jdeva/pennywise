@@ -8,7 +8,10 @@ use actix_cors::Cors;
 use actix_web::{middleware as actix_middleware, web, App, HttpServer};
 use std::env;
 
-use services::{BudgetService, WorkspaceService, Cache, FileStore, TransactionService, UserService};
+use services::{
+    BudgetService, Cache, FileStore, RecurringService, TransactionService, UserService,
+    WorkspaceService,
+};
 use utils::auth::JwtConfig;
 
 #[actix_web::main]
@@ -38,6 +41,12 @@ async fn main() -> std::io::Result<()> {
         workspace_service.clone(),
         86400,
     );
+    let recurring_service = RecurringService::new(
+        file_store.clone(),
+        cache.clone(),
+        workspace_service.clone(),
+        86400,
+    );
 
     let port: u16 = env::var("PORT").unwrap_or_else(|_| "8080".to_string()).parse().expect("Invalid PORT");
 
@@ -51,6 +60,7 @@ async fn main() -> std::io::Result<()> {
     let workspace_service_data = web::Data::new(workspace_service);
     let transaction_service_data = web::Data::new(transaction_service);
     let budget_service_data = web::Data::new(budget_service);
+    let recurring_service_data = web::Data::new(recurring_service);
 
     HttpServer::new(move || {
         let cors = Cors::permissive();
@@ -66,6 +76,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(workspace_service_data.clone())
             .app_data(transaction_service_data.clone())
             .app_data(budget_service_data.clone())
+            .app_data(recurring_service_data.clone())
             .configure(api::config)
     })
     .bind(("0.0.0.0", port))?

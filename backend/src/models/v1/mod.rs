@@ -1,5 +1,6 @@
 pub mod budget;
 pub mod chart_of_accounts;
+pub mod recurring;
 pub mod workspace;
 pub mod transaction;
 pub mod user;
@@ -25,4 +26,8 @@ pub use user::{
 pub use budget::{
     BudgetDefinition, BudgetDefinitionResponse, BudgetReportQuery, BudgetReportResponse,
     CreateBudgetRequest, ForecastQuery, UpdateBudgetRequest,
+};
+pub use recurring::{
+    CreateRecurringRequest, RecurringDefinition, RecurringDefinitionResponse, RecurringForecastQuery,
+    RecurringForecastResponse, UpdateRecurringRequest,
 };

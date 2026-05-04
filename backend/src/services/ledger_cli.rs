@@ -37,7 +37,10 @@ impl LedgerCli {
         end: Option<&str>,
     ) -> Result<String, AppError> {
         let mut cmd = Command::new("ledger");
-        cmd.arg("register").arg("-f").arg(ledger_path);
+        // Wide account column so ledger doesn't truncate names like
+        // `Expenses:Transport:Fuel` → `Exp:Transpor:Fuel`, which would break
+        // the frontend's top-level-segment aggregation.
+        cmd.arg("--account-width=80").arg("register").arg("-f").arg(ledger_path);
         if let Some(user) = filter_user {
             // Must match `validate_username`'s char set — anything else could
             // terminate the regex literal and inject a ledger value-expression.
@@ -110,7 +113,8 @@ impl LedgerCli {
         end_date: &str,
     ) -> Result<String, AppError> {
         let mut cmd = Command::new("ledger");
-        cmd.arg("--forecast")
+        cmd.arg("--account-width=80")
+            .arg("--forecast")
             .arg(format!("d<[{}]", end_date))
             .arg("register")
             .arg("-f")
@@ -164,7 +168,7 @@ impl LedgerCli {
         end: Option<&str>,
     ) -> Command {
         let mut cmd = Command::new("ledger");
-        cmd.arg("register").arg("-f").arg(ledger_path);
+        cmd.arg("--account-width=80").arg("register").arg("-f").arg(ledger_path);
         if let Some(user) = filter_user {
             cmd.arg("--limit")
                 .arg(format!("tag('User') =~ /{}/", user));
@@ -222,7 +226,8 @@ impl LedgerCli {
         end_date: &str,
     ) -> Command {
         let mut cmd = Command::new("ledger");
-        cmd.arg("--forecast")
+        cmd.arg("--account-width=80")
+            .arg("--forecast")
             .arg(format!("d<[{}]", end_date))
             .arg("register")
             .arg("-f")
@@ -280,10 +285,11 @@ mod tests {
         let cmd = LedgerCli::build_register_command(&path, None, None, None, None);
         let args = get_args(&cmd);
         assert_eq!(args[0], "ledger");
-        assert_eq!(args[1], "register");
-        assert_eq!(args[2], "-f");
-        assert_eq!(args[3], "/tmp/test.ledger");
-        assert_eq!(args.len(), 4);
+        assert_eq!(args[1], "--account-width=80");
+        assert_eq!(args[2], "register");
+        assert_eq!(args[3], "-f");
+        assert_eq!(args[4], "/tmp/test.ledger");
+        assert_eq!(args.len(), 5);
     }
 
     #[test]
@@ -292,12 +298,13 @@ mod tests {
         let cmd = LedgerCli::build_register_command(&path, Some("alice"), None, None, None);
         let args = get_args(&cmd);
         assert_eq!(args[0], "ledger");
-        assert_eq!(args[1], "register");
-        assert_eq!(args[2], "-f");
-        assert_eq!(args[3], "/tmp/test.ledger");
-        assert_eq!(args[4], "--limit");
-        assert_eq!(args[5], "tag('User') =~ /alice/");
-        assert_eq!(args.len(), 6);
+        assert_eq!(args[1], "--account-width=80");
+        assert_eq!(args[2], "register");
+        assert_eq!(args[3], "-f");
+        assert_eq!(args[4], "/tmp/test.ledger");
+        assert_eq!(args[5], "--limit");
+        assert_eq!(args[6], "tag('User') =~ /alice/");
+        assert_eq!(args.len(), 7);
     }
 
     #[test]
@@ -396,11 +403,12 @@ mod tests {
         let cmd = LedgerCli::build_forecast_register_command(&path, "2025-12-31");
         let args = get_args(&cmd);
         assert_eq!(args[0], "ledger");
-        assert_eq!(args[1], "--forecast");
-        assert_eq!(args[2], "d<[2025-12-31]");
-        assert_eq!(args[3], "register");
-        assert_eq!(args[4], "-f");
-        assert_eq!(args[5], "/tmp/test.ledger");
-        assert_eq!(args.len(), 6);
+        assert_eq!(args[1], "--account-width=80");
+        assert_eq!(args[2], "--forecast");
+        assert_eq!(args[3], "d<[2025-12-31]");
+        assert_eq!(args[4], "register");
+        assert_eq!(args[5], "-f");
+        assert_eq!(args[6], "/tmp/test.ledger");
+        assert_eq!(args.len(), 7);
     }
 }

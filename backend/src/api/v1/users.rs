@@ -54,7 +54,7 @@ async fn register(
     // Give every new user a starter workspace. Log and continue on failure —
     // the user account is already persisted and we don't want registration
     // to hard-fail over a convenience step.
-    if let Err(e) = workspace_service.create_workspace(&profile.id, "Personal".to_string(), None) {
+    if let Err(e) = workspace_service.create_workspace(&profile.id, "Personal".to_string(), None, None) {
         warn!("Failed to create default workspace for user {}: {}", profile.id, e);
     }
 

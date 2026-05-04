@@ -51,6 +51,7 @@ impl WorkspaceService {
         owner_id: &Uuid,
         name: String,
         currency: Option<String>,
+        seed_color: Option<String>,
     ) -> Result<Workspace, AppError> {
         let now = Utc::now();
         let id = Uuid::new_v4();
@@ -66,6 +67,7 @@ impl WorkspaceService {
             ledger_dir: Some(format!("workspaces/workspace-{}/", id)),
             rotation_period: RotationPeriod::default(),
             budgeting_enabled: false,
+            seed_color,
         };
 
         self.file_store.write_workspace(&workspace)?;
@@ -142,6 +144,7 @@ impl WorkspaceService {
         workspace_id: &Uuid,
         user_id: &Uuid,
         name: String,
+        seed_color: Option<Option<String>>,
     ) -> Result<Workspace, AppError> {
         let mut workspace = self
             .get_workspace(workspace_id)?
@@ -152,6 +155,9 @@ impl WorkspaceService {
         }
 
         workspace.name = name;
+        if let Some(seed) = seed_color {
+            workspace.seed_color = seed;
+        }
         workspace.updated_at = Utc::now();
         self.file_store.write_workspace(&workspace)?;
         self.cache.set_or_warn(&cache_key(workspace_id), &workspace, self.cache_ttl);

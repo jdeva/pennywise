@@ -2,6 +2,7 @@ pub mod admin;
 pub mod budgets;
 pub mod chart_of_accounts;
 pub mod ledger_files;
+pub mod recurring;
 pub mod workspaces;
 pub mod transactions;
 pub mod users;

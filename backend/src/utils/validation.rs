@@ -2,9 +2,11 @@ use chrono::NaiveDate;
 
 use crate::models::{
     AccountType, AddAccountRequest, AddCategoryRequest, ChangePasswordRequest,
-    CreateBudgetRequest, CreateWorkspaceRequest, DeleteAccountRequest, OpeningBalanceRequest,
+    CreateBudgetRequest, CreateRecurringRequest, CreateWorkspaceRequest, DeleteAccountRequest,
+    OpeningBalanceRequest,
     PostTransactionRequest, RegisterRequest, ShareWorkspaceRequest, UpdateBudgetRequest,
-    UpdateTransactionRequest, UpdateWorkspaceRequest, UpdateProfileRequest, ValidationDetail,
+    UpdateRecurringRequest, UpdateTransactionRequest, UpdateWorkspaceRequest, UpdateProfileRequest,
+    ValidationDetail,
 };
 
 pub fn is_valid_username_char(c: char) -> bool {
@@ -188,11 +190,45 @@ pub fn validate_workspace_name(name: &str) -> Result<(), Vec<ValidationDetail>> 
 }
 
 pub fn validate_create_workspace(req: &CreateWorkspaceRequest) -> Result<(), Vec<ValidationDetail>> {
-    validate_workspace_name(&req.name)
+    let mut errors = Vec::new();
+    if let Err(mut e) = validate_workspace_name(&req.name) {
+        errors.append(&mut e);
+    }
+    if let Some(ref seed) = req.seed_color {
+        if let Err(mut e) = validate_seed_color(seed) {
+            errors.append(&mut e);
+        }
+    }
+    if errors.is_empty() { Ok(()) } else { Err(errors) }
 }
 
 pub fn validate_update_workspace(req: &UpdateWorkspaceRequest) -> Result<(), Vec<ValidationDetail>> {
-    validate_workspace_name(&req.name)
+    let mut errors = Vec::new();
+    if let Err(mut e) = validate_workspace_name(&req.name) {
+        errors.append(&mut e);
+    }
+    if let Some(ref seed) = req.seed_color {
+        if let Err(mut e) = validate_seed_color(seed) {
+            errors.append(&mut e);
+        }
+    }
+    if errors.is_empty() { Ok(()) } else { Err(errors) }
+}
+
+/// Seed colour must be `#RRGGBB` (hex triplet with leading hash).
+pub fn validate_seed_color(raw: &str) -> Result<(), Vec<ValidationDetail>> {
+    let bytes = raw.as_bytes();
+    let ok = bytes.len() == 7
+        && bytes[0] == b'#'
+        && bytes[1..].iter().all(|b| b.is_ascii_hexdigit());
+    if ok {
+        Ok(())
+    } else {
+        Err(vec![ValidationDetail {
+            field: "seed_color".to_string(),
+            message: "Must be a #RRGGBB hex colour".to_string(),
+        }])
+    }
 }
 
 pub fn validate_share_workspace(req: &ShareWorkspaceRequest) -> Result<(), Vec<ValidationDetail>> {
@@ -590,6 +626,40 @@ pub fn validate_update_budget(req: &UpdateBudgetRequest) -> Result<(), Vec<Valid
     } else {
         Err(errors)
     }
+}
+
+pub fn validate_create_recurring(req: &CreateRecurringRequest) -> Result<(), Vec<ValidationDetail>> {
+    let mut errors = Vec::new();
+    if let Err(mut e) = validate_period_expression(&req.period) {
+        errors.append(&mut e);
+    }
+    if let Err(mut e) = validate_ledger_account_name(&req.account, "account") {
+        errors.append(&mut e);
+    }
+    if let Err(mut e) = validate_ledger_account_name(&req.counter_account, "counter_account") {
+        errors.append(&mut e);
+    }
+    if let Err(mut e) = validate_amount(&req.amount) {
+        errors.append(&mut e);
+    }
+    if errors.is_empty() { Ok(()) } else { Err(errors) }
+}
+
+pub fn validate_update_recurring(req: &UpdateRecurringRequest) -> Result<(), Vec<ValidationDetail>> {
+    let mut errors = Vec::new();
+    if let Err(mut e) = validate_period_expression(&req.period) {
+        errors.append(&mut e);
+    }
+    if let Err(mut e) = validate_ledger_account_name(&req.account, "account") {
+        errors.append(&mut e);
+    }
+    if let Err(mut e) = validate_ledger_account_name(&req.counter_account, "counter_account") {
+        errors.append(&mut e);
+    }
+    if let Err(mut e) = validate_amount(&req.amount) {
+        errors.append(&mut e);
+    }
+    if errors.is_empty() { Ok(()) } else { Err(errors) }
 }
 
 #[cfg(test)]

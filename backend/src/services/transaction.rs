@@ -1169,6 +1169,7 @@ mod tests {
             ledger_dir: None,
             rotation_period: RotationPeriod::default(),
             budgeting_enabled: false,
+            seed_color: None,
         };
         file_store.write_account(&account).unwrap();
         file_store.create_account_ledger(&account).unwrap();
@@ -1802,6 +1803,7 @@ mod tests {
             ledger_dir: Some(format!("workspaces/workspace-{}/", Uuid::new_v4())),
             rotation_period: RotationPeriod::Quarterly,
             budgeting_enabled: false,
+            seed_color: None,
         };
         // Re-patch ledger_dir to use the same id we just generated for ws.
         let mut ws = ws;

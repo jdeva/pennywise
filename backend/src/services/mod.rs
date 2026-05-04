@@ -1,4 +1,5 @@
 pub mod budget;
+pub mod recurring;
 pub mod workspace;
 pub mod cache;
 pub mod file_store;
@@ -9,6 +10,7 @@ pub mod user;
 
 pub use workspace::WorkspaceService;
 pub use budget::BudgetService;
+pub use recurring::RecurringService;
 pub use cache::Cache;
 pub use file_store::FileStore;
 pub use ledger_cli::LedgerCli;

@@ -6,6 +6,8 @@ import { ThemeProvider } from '@/context/theme-context'
 import { SeedProvider } from '@/context/seed-context'
 import { AuthProvider } from '@/context/auth-context'
 import { WorkspaceProvider } from '@/context/workspace-context'
+import { DateRangeProvider } from '@/context/date-range-context'
+import { TxFormProvider } from '@/context/tx-form-context'
 import { routeTree } from '@/routes'
 import '@/index.css'
 
@@ -30,13 +32,17 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <SeedProvider>
-          <AuthProvider>
-            <WorkspaceProvider>
-              <RouterProvider router={router} />
-            </WorkspaceProvider>
-          </AuthProvider>
-        </SeedProvider>
+        <AuthProvider>
+          <WorkspaceProvider>
+            <SeedProvider>
+              <DateRangeProvider>
+                <TxFormProvider>
+                  <RouterProvider router={router} />
+                </TxFormProvider>
+              </DateRangeProvider>
+            </SeedProvider>
+          </WorkspaceProvider>
+        </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>
   </React.StrictMode>,

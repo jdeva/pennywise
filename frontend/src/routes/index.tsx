@@ -12,6 +12,13 @@ import { TransactionsPage } from '@/features/transactions'
 import { BudgetsPage } from '@/features/budgets'
 import { SettingsPage } from '@/features/settings'
 import { LedgerFilesPage } from '@/features/ledger-files'
+import {
+  CashflowReport,
+  CategoriesReport,
+  TrendReport,
+  MerchantsReport,
+} from '@/features/reports'
+import { RecurringPage } from '@/features/recurring'
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
@@ -66,6 +73,42 @@ const budgetsRoute = createRoute({
   component: BudgetsPage,
 })
 
+const reportsIndexRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/reports',
+  component: CashflowReport,
+})
+
+const reportsCashflowRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/reports/cashflow',
+  component: CashflowReport,
+})
+
+const reportsCategoriesRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/reports/categories',
+  component: CategoriesReport,
+})
+
+const reportsTrendRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/reports/trend',
+  component: TrendReport,
+})
+
+const reportsMerchantsRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/reports/merchants',
+  component: MerchantsReport,
+})
+
+const recurringRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/recurring',
+  component: RecurringPage,
+})
+
 const settingsRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/settings',
@@ -85,6 +128,12 @@ export const routeTree = rootRoute.addChildren([
     dashboardRoute,
     transactionsRoute,
     budgetsRoute,
+    reportsIndexRoute,
+    reportsCashflowRoute,
+    reportsCategoriesRoute,
+    reportsTrendRoute,
+    reportsMerchantsRoute,
+    recurringRoute,
     settingsRoute,
     ledgerFilesRoute,
   ]),
